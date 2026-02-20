@@ -1,4 +1,5 @@
-# zensical-scanner
+# Web Finder
+
 
 Menubar app + CLI for finding running Zensical servers - locally and across Tailscale.
 
