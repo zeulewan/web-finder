@@ -1,0 +1,98 @@
+#!/usr/bin/env node
+/**
+ * zensical-scan - CLI for finding running Zensical servers
+ *
+ * Usage:
+ *   zensical-scan                 # Scan local + Tailscale, human-readable
+ *   zensical-scan --local         # Local only
+ *   zensical-scan --tailscale     # Tailscale peers only
+ *   zensical-scan --json          # Machine-readable JSON output
+ *   zensical-scan --local --json  # Local only, JSON (useful for agents)
+ */
+
+const path = require('path');
+const { scanLocal, scanTailscale } = require(path.join(__dirname, '..', 'scanner'));
+
+const args = process.argv.slice(2);
+
+if (args.includes('--help') || args.includes('-h')) {
+  console.log(`
+Usage: zensical-scan [options]
+
+Options:
+  --local, -l       Scan local processes only
+  --tailscale, -t   Scan Tailscale peers only
+  --json, -j        Output as JSON (for scripts/agents)
+  --help, -h        Show this help
+
+With no options, scans both local and Tailscale.
+
+Examples:
+  zensical-scan                  # Full scan, human-readable
+  zensical-scan --local --json   # Local only, JSON output
+  zensical-scan --tailscale      # Tailscale peers
+`);
+  process.exit(0);
+}
+
+const wantLocal     = args.includes('--local')     || args.includes('-l');
+const wantTailscale = args.includes('--tailscale') || args.includes('-t');
+const jsonMode      = args.includes('--json')      || args.includes('-j');
+
+// Default: both
+const doLocal     = wantLocal     || (!wantLocal && !wantTailscale);
+const doTailscale = wantTailscale || (!wantLocal && !wantTailscale);
+
+async function main() {
+  const result = {};
+
+  const tasks = [];
+  if (doLocal)     tasks.push(scanLocal().then(r => { result.local = r; }));
+  if (doTailscale) tasks.push(scanTailscale().then(r => { result.tailscale = r; }));
+  await Promise.all(tasks);
+
+  if (jsonMode) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  // Human-readable output
+  if (result.local !== undefined) {
+    console.log('\nLocal:');
+    if (result.local.length === 0) {
+      console.log('  (none running)');
+    } else {
+      for (const inst of result.local) {
+        console.log(`  \u25CF  ${inst.project.padEnd(20)} ${inst.url}`);
+      }
+    }
+  }
+
+  if (result.tailscale !== undefined) {
+    console.log('\nTailscale:');
+    if (result.tailscale.error) {
+      console.log(`  Error: ${result.tailscale.error}`);
+    } else if (!result.tailscale.peers || result.tailscale.peers.length === 0) {
+      console.log('  (no peers)');
+    } else {
+      for (const peer of result.tailscale.peers) {
+        if (!peer.online) {
+          console.log(`  \u25CB  ${peer.name.padEnd(20)} offline`);
+        } else if (peer.ports.length === 0) {
+          console.log(`  \u25CE  ${peer.name.padEnd(20)} online, no servers`);
+        } else {
+          for (const port of peer.ports) {
+            console.log(`  \u25CF  ${peer.name.padEnd(20)} http://${peer.ip}:${port}`);
+          }
+        }
+      }
+    }
+  }
+
+  console.log('');
+}
+
+main().catch(err => {
+  console.error('Error:', err.message);
+  process.exit(1);
+});

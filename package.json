@@ -1,0 +1,15 @@
+{
+  "name": "zensical-scanner",
+  "version": "1.0.0",
+  "description": "Scan for Zensical servers locally and across Tailscale",
+  "main": "main.js",
+  "bin": {
+    "zensical-scan": "./bin/zensical-scan"
+  },
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}
