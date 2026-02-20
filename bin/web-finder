@@ -14,9 +14,8 @@ const path = require('path');
 const fs   = require('fs');
 
 // Resolve symlinks so scanner.js is found even when binary is symlinked to /usr/local/bin
-const realBin  = fs.realpathSync(__filename);
-const scanner  = require(path.join(path.dirname(realBin), '..', 'scanner'));
-const { scanLocal, scanTailscale } = scanner;
+const realBin = fs.realpathSync(__filename);
+const { scanLocal, scanTailscale } = require(path.join(path.dirname(realBin), '..', 'scanner'));
 
 const args = process.argv.slice(2);
 
@@ -48,6 +47,14 @@ const jsonMode      = args.includes('--json')      || args.includes('-j');
 const doLocal     = wantLocal     || (!wantLocal && !wantTailscale);
 const doTailscale = wantTailscale || (!wantLocal && !wantTailscale);
 
+const isTTY = process.stdout.isTTY;
+const dim   = isTTY ? '\x1b[2m' : '';
+const reset = isTTY ? '\x1b[0m' : '';
+
+function pad(str, len) {
+  return str.length >= len ? str : str + ' '.repeat(len - str.length);
+}
+
 async function main() {
   const result = {};
   const tasks  = [];
@@ -67,7 +74,7 @@ async function main() {
       console.log('  (none found)');
     } else {
       for (const s of result.local) {
-        console.log(`  \u25CF  ${s.project.padEnd(20)} ${s.url}`);
+        console.log(`  \u25CF  ${pad(s.title, 28)} ${s.url}`);
       }
     }
   }
@@ -79,14 +86,25 @@ async function main() {
     } else if (!result.tailscale.peers || result.tailscale.peers.length === 0) {
       console.log('  (no peers)');
     } else {
-      for (const peer of result.tailscale.peers) {
+      // Sort: has services first, then offline
+      const sorted = [...result.tailscale.peers].sort((a, b) => {
+        if (!a.online && b.online)  return 1;
+        if (a.online  && !b.online) return -1;
+        const as = (a.services || []).length;
+        const bs = (b.services || []).length;
+        if (as === 0 && bs > 0) return 1;
+        if (as > 0 && bs === 0) return -1;
+        return a.name.localeCompare(b.name);
+      });
+
+      for (const peer of sorted) {
         if (!peer.online) {
-          console.log(`  \u25CB  ${peer.name.padEnd(20)} offline`);
-        } else if (peer.ports.length === 0) {
-          console.log(`  \u25CE  ${peer.name.padEnd(20)} online, no services`);
+          console.log(`  \u25CB  ${peer.name}`);
+        } else if (!peer.services || peer.services.length === 0) {
+          console.log(`  \u25CE  ${peer.name}  ${dim}(no services)${reset}`);
         } else {
-          for (const port of peer.ports) {
-            console.log(`  \u25CF  ${peer.name.padEnd(20)} http://${peer.ip}:${port}`);
+          for (const svc of peer.services) {
+            console.log(`  \u25CF  ${pad(peer.name, 16)} ${pad(svc.title, 28)} ${svc.url}`);
           }
         }
       }

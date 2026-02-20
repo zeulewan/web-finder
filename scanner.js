@@ -2,7 +2,9 @@
  * Shared scanning logic - used by both the desktop app and CLI.
  */
 const { exec } = require('child_process');
-const net = require('net');
+const net   = require('net');
+const http  = require('http');
+const https = require('https');
 
 const SCAN_PORTS = [
   80, 443,
@@ -19,7 +21,9 @@ const SCAN_PORTS = [
   9090,             // Prometheus
   9443,
 ];
-const PORT_TIMEOUT = 900;
+const PORT_TIMEOUT  = 900;
+const HTTP_TIMEOUT  = 3000;
+const READ_LIMIT    = 16384; // stop reading after 16KB (enough for <title>)
 
 const TAILSCALE_PATHS = [
   'tailscale',
@@ -27,6 +31,8 @@ const TAILSCALE_PATHS = [
   '/usr/local/bin/tailscale',
   '/opt/homebrew/bin/tailscale',
 ];
+
+// ---- helpers ----------------------------------------------------------------
 
 function execPromise(cmd, timeout = 6000) {
   return new Promise((resolve) => {
@@ -40,7 +46,7 @@ function checkPort(host, port) {
     socket.setTimeout(PORT_TIMEOUT);
     socket.on('connect', () => { socket.destroy(); resolve(true); });
     socket.on('timeout', () => { socket.destroy(); resolve(false); });
-    socket.on('error', () => resolve(false));
+    socket.on('error',   () => resolve(false));
     socket.connect(port, host);
   });
 }
@@ -52,39 +58,100 @@ async function scanPorts(host, ports = SCAN_PORTS) {
   return checks.filter(c => c.open).map(c => c.port);
 }
 
-// Find zensical processes via pgrep (fast, no TCC delay).
-// Parses --dev-addr HOST:PORT or --port PORT flags.
-async function scanLocal() {
-  const out = await execPromise('pgrep -fl zensical 2>/dev/null');
-  if (!out) return [];
+/** Fetch the HTML <title> from a URL. Returns null on failure or error response. */
+function fetchTitle(urlStr) {
+  return new Promise((resolve) => {
+    const mod = urlStr.startsWith('https') ? https : http;
+    let buf = '';
+    let settled = false;
+    const done = (val) => { if (!settled) { settled = true; resolve(val); } };
 
-  const results = [];
-  for (const line of out.split('\n')) {
-    if (!line.includes('zensical') || !line.includes('serve')) continue;
-    if (line.includes('grep')) continue;
+    const req = mod.get(urlStr, {
+      timeout: HTTP_TIMEOUT,
+      rejectUnauthorized: false,   // accept self-signed certs (Synology, etc.)
+      headers: { 'User-Agent': 'web-finder/1.0' },
+    }, (res) => {
+      // If the server rejects the scheme (e.g. HTTP sent to HTTPS port), skip it
+      if (res.statusCode >= 400) { res.destroy(); done(null); return; }
 
-    const devAddrMatch = line.match(/--dev-addr\s+([\d.]+):(\d+)/);
-    const portFlagMatch = line.match(/(?:--port|-p)\s+(\d+)/);
-
-    const port = devAddrMatch
-      ? parseInt(devAddrMatch[2])
-      : portFlagMatch
-      ? parseInt(portFlagMatch[1])
-      : 8000;
-
-    // Extract project name from virtualenv path: /GIT/myproject/.venv/bin/zensical
-    const pathMatch = line.match(/\/([^/\s]+)\/.venv\/bin\/zensical/);
-    const project = pathMatch ? pathMatch[1] : 'local';
-
-    results.push({
-      project,
-      host: '127.0.0.1',
-      port,
-      url: `http://127.0.0.1:${port}`,
+      res.on('data', (chunk) => {
+        buf += chunk;
+        if (buf.length > READ_LIMIT) { req.destroy(); }
+        // Early exit once we have the title
+        const m = buf.match(/<title[^>]*>([^<]*)<\/title>/i);
+        if (m) { req.destroy(); done(decodeEntities(m[1].trim()) || null); }
+      });
+      res.on('end', () => done(null));
     });
-  }
-  return results;
+    req.on('error',   () => done(null));
+    req.on('timeout', () => { req.destroy(); done(null); });
+  });
 }
+
+const HTTPS_FIRST_PORTS = new Set([443, 8443, 9443]);
+
+/** Try http then https (or https first for known HTTPS ports); return { title, url } or null. */
+async function fetchService(host, port) {
+  const schemes = HTTPS_FIRST_PORTS.has(port) ? ['https', 'http'] : ['http', 'https'];
+  for (const scheme of schemes) {
+    const url   = `${scheme}://${host}:${port}`;
+    const title = await fetchTitle(url);
+    if (title) return { title, url };
+  }
+  return null;
+}
+
+function decodeEntities(str) {
+  return str
+    .replace(/&amp;/g,  '&')
+    .replace(/&lt;/g,   '<')
+    .replace(/&gt;/g,   '>')
+    .replace(/&#39;/g,  "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#160;/g, ' ');
+}
+
+// ---- local scan -------------------------------------------------------------
+
+/**
+ * Scan the local machine.
+ * Uses pgrep to identify zensical processes (fast, no TCC delay),
+ * then port-scans and fetches HTTP titles for everything else.
+ * Returns: [{ title, host, port, url }]
+ */
+async function scanLocal() {
+  // Get pgrep hints: port -> project name
+  const hints = {};
+  const pgrepOut = await execPromise('pgrep -fl zensical 2>/dev/null');
+  if (pgrepOut) {
+    for (const line of pgrepOut.split('\n')) {
+      if (!line.includes('serve') || line.includes('grep')) continue;
+      const devAddr  = line.match(/--dev-addr\s+[\d.]+:(\d+)/);
+      const portFlag = line.match(/(?:--port|-p)\s+(\d+)/);
+      const port     = devAddr ? parseInt(devAddr[1]) : portFlag ? parseInt(portFlag[1]) : 8000;
+      const pathM    = line.match(/\/([^/\s]+)\/.venv\/bin\/zensical/);
+      hints[port]    = pathM ? pathM[1] : 'zensical';
+    }
+  }
+
+  // TCP-scan all ports
+  const openPorts = await scanPorts('127.0.0.1');
+
+  // Fetch title for each open port (use hint as title if available)
+  const services = await Promise.all(openPorts.map(async (port) => {
+    if (hints[port]) {
+      return { title: hints[port], host: '127.0.0.1', port, url: `http://127.0.0.1:${port}` };
+    }
+    const svc = await fetchService('127.0.0.1', port);
+    if (!svc) return null;
+    return { title: svc.title, host: '127.0.0.1', port, url: svc.url };
+  }));
+
+  return services.filter(Boolean);
+}
+
+// ---- Tailscale scan ---------------------------------------------------------
 
 async function getTailscaleStatus() {
   for (const tsPath of TAILSCALE_PATHS) {
@@ -95,6 +162,10 @@ async function getTailscaleStatus() {
   return null;
 }
 
+/**
+ * Scan all online Tailscale peers.
+ * Returns: { peers: [{ name, ip, online, services: [{ title, port, url }] }] }
+ */
 async function scanTailscale() {
   const status = await getTailscaleStatus();
   if (!status) return { error: 'Tailscale not available', peers: [] };
@@ -102,20 +173,26 @@ async function scanTailscale() {
 
   const peers = Object.values(status.Peer)
     .map(peer => {
-      const hn = peer.HostName || '';
-      const dn = (peer.DNSName || '').replace(/\..*$/, '');
+      const hn   = peer.HostName || '';
+      const dn   = (peer.DNSName || '').replace(/\..*$/, '');
       const name = (!hn || hn.toLowerCase() === 'localhost') ? (dn || 'unknown') : hn.replace(/\..*$/, '');
       return { name, ip: (peer.TailscaleIPs || [])[0], online: peer.Online || false };
     })
     .filter(p => p.ip);
 
-  const scanned = await Promise.all(
-    peers.map(async (peer) => {
-      if (!peer.online) return { ...peer, ports: [] };
-      const ports = await scanPorts(peer.ip);
-      return { ...peer, ports };
-    })
-  );
+  const scanned = await Promise.all(peers.map(async (peer) => {
+    if (!peer.online) return { ...peer, services: [] };
+
+    const openPorts = await scanPorts(peer.ip);
+    const services  = await Promise.all(openPorts.map(async (port) => {
+      const svc = await fetchService(peer.ip, port);
+      return svc
+        ? { title: svc.title, port, url: svc.url }
+        : { title: `Port ${port}`, port, url: `http://${peer.ip}:${port}` };
+    }));
+
+    return { ...peer, services };
+  }));
 
   return { peers: scanned };
 }
