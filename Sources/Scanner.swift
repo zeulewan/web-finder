@@ -59,11 +59,11 @@ enum Scanner {
     // MARK: - Top-level scan
 
     static func scanAll() async -> [Device] {
-        // Get Tailscale peers and local hostname in parallel
-        async let localDevice  = scanLocalDevice()
-        async let remoteDevices = scanTailscaleDevices()
+        // Run local and Tailscale scans in parallel
+        async let local   = scanLocalDevice()
+        async let remote  = scanTailscaleDevices()
 
-        var all = [await localDevice] + (await remoteDevices)
+        var all = [await local] + (await remote)
         // Sort: local first, then online before offline, then alphabetical
         all.sort {
             if $0.isLocal != $1.isLocal { return $0.isLocal }
@@ -79,24 +79,25 @@ enum Scanner {
         let hostname = ProcessInfo.processInfo.hostName
             .components(separatedBy: ".").first ?? "This Mac"
 
-        // Run TCP scan on 127.0.0.1 and ps aux in parallel
+        // Run TCP scan and process discovery in parallel
         async let openPorts  = tcpScanPorts(host: "127.0.0.1")
         async let psProjects = scanLocalProcesses()
 
         let ports    = await openPorts
-        let projects = await psProjects   // port -> project name
+        let projects = await psProjects
 
         let services = await fetchServices(host: "127.0.0.1", ports: ports, hints: projects)
         return Device(name: hostname, ip: "127.0.0.1", isLocal: true, os: "darwin",
                       online: true, services: services)
     }
 
-    /// Parse ps aux for zensical processes - returns port -> project name hints
+    /// Use pgrep to find zensical processes - returns port -> project name hints
     static func scanLocalProcesses() async -> [Int: String] {
-        guard let out = await shell("ps aux") else { return [:] }
+        // pgrep -fl is fast and targeted; no TCC delay unlike ps aux
+        guard let out = await shell("pgrep -fl zensical 2>/dev/null") else { return [:] }
         var hints: [Int: String] = [:]
         for line in out.components(separatedBy: "\n") {
-            guard line.contains("zensical"), line.contains("serve"), !line.contains("grep") else { continue }
+            guard line.contains("serve"), !line.contains("grep") else { continue }
 
             var port = 8000
             if let range = line.range(of: #"--dev-addr\s+[\d.]+:(\d+)"#, options: .regularExpression) {
@@ -134,8 +135,17 @@ enum Scanner {
             guard let peer = v as? [String: Any],
                   let ips  = peer["TailscaleIPs"] as? [String],
                   let ip   = ips.first else { return nil }
-            let name = ((peer["HostName"] as? String) ?? (peer["DNSName"] as? String) ?? "unknown")
-                .components(separatedBy: ".").first ?? "unknown"
+
+            // Prefer HostName, but fall back to DNSName if HostName is "localhost" or empty
+            let hostName = peer["HostName"] as? String ?? ""
+            let dnsFirst = (peer["DNSName"] as? String)?.components(separatedBy: ".").first ?? ""
+            let name: String
+            if hostName.isEmpty || hostName.lowercased() == "localhost" {
+                name = dnsFirst.isEmpty ? ip : dnsFirst
+            } else {
+                name = hostName.components(separatedBy: ".").first ?? hostName
+            }
+
             return PeerInfo(name: name, ip: ip,
                             online: peer["Online"] as? Bool ?? false,
                             os: peer["OS"] as? String)
@@ -176,7 +186,7 @@ enum Scanner {
     }
 
     static func tcpCheck(host: String, port: Int) async -> Bool {
-        await withCheckedContinuation { continuation in
+        await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             let lock = NSLock()
             var done = false
             let finish: (Bool) -> Void = { result in
@@ -206,7 +216,7 @@ enum Scanner {
         await withTaskGroup(of: WebService?.self) { group in
             for port in ports {
                 group.addTask {
-                    // If we have a known name from ps aux, use it with a quick HTTP check
+                    // If we have a known name from pgrep, use it directly
                     if let projectName = hints[port] {
                         let url = URL(string: "http://\(host):\(port)")!
                         return WebService(title: projectName, port: port, url: url, isHTTPS: false)
@@ -283,21 +293,36 @@ enum Scanner {
         return nil
     }
 
-    static func shell(_ command: String) async -> String? {
-        await withCheckedContinuation { continuation in
+    static func shell(_ command: String, timeout: TimeInterval = 8.0) async -> String? {
+        await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+            let lock = NSLock()
+            var done = false
+            let finish: (String?) -> Void = { result in
+                lock.lock(); let go = !done; done = true; lock.unlock()
+                if go { continuation.resume(returning: result) }
+            }
+
+            let p = Process(); let pipe = Pipe()
+            p.executableURL = URL(fileURLWithPath: "/bin/sh")
+            p.arguments = ["-c", command]
+            p.standardOutput = pipe
+            p.standardError  = Pipe()
+
+            // Kill the process after timeout to prevent hanging
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
+                if p.isRunning { p.terminate() }
+                finish(nil)
+            }
+
             DispatchQueue.global(qos: .utility).async {
-                let p = Process(); let pipe = Pipe()
-                p.executableURL = URL(fileURLWithPath: "/bin/sh")
-                p.arguments = ["-c", command]
-                p.standardOutput = pipe
-                p.standardError  = Pipe()
                 do {
-                    try p.run(); p.waitUntilExit()
+                    try p.run()
+                    p.waitUntilExit()
                     let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(),
                                      encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    continuation.resume(returning: out?.isEmpty == false ? out : nil)
+                    finish(out?.isEmpty == false ? out : nil)
                 } catch {
-                    continuation.resume(returning: nil)
+                    finish(nil)
                 }
             }
         }

@@ -17,12 +17,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             button.target = self
         }
 
-        let hostingController = NSHostingController(rootView: ContentView())
-        hostingController.sizingOptions = .preferredContentSize
-
         popover = NSPopover()
-        popover.contentViewController = hostingController
-        popover.behavior = .transient // Closes when clicking outside - automatic, no blur hacks needed
+        popover.contentSize = NSSize(width: 340, height: 460)
+        popover.contentViewController = NSHostingController(rootView: ContentView())
+        popover.behavior = .transient
         popover.animates = true
     }
 

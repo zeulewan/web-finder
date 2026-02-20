@@ -33,8 +33,10 @@ struct ContentView: View {
             Divider()
             footerBar
         }
-        .frame(width: 340)
-        .onAppear { model.scan() }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            model.scan()
+        }
         // Auto-refresh every 30s while popup is open
         .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
             model.scan()
@@ -86,7 +88,7 @@ struct ContentView: View {
                 .padding(.vertical, 4)
             }
         }
-        .frame(maxHeight: 400)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: Footer
