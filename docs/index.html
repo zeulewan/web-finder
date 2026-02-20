@@ -125,6 +125,7 @@
       font-size: 12px;
       color: var(--muted);
       margin-left: 6px;
+      white-space: nowrap;
     }
     .terminal-body {
       padding: 18px 20px;
@@ -342,14 +343,14 @@
       <div><span class="cmd">$</span> <span class="out">web-finder</span></div>
       <div>&nbsp;</div>
       <div class="dim">Local:</div>
-      <div><span class="dot-out">&#x25CF;</span>  <span class="out">cen800               </span> <span class="url">http://127.0.0.1:8000</span></div>
+      <div><span class="dot-out">&#x25CF;</span>  <span class="out">cen800                        </span><span class="url">http://127.0.0.1:8000</span></div>
       <div>&nbsp;</div>
       <div class="dim">Tailscale:</div>
-      <div><span class="dot-out">&#x25CF;</span>  <span class="out">workstation      </span><span class="out">Welcome to nginx!            </span><span class="url">http://100.101.214.44:80</span></div>
-      <div><span class="dot-out">&#x25CF;</span>  <span class="out">storage          </span><span class="out">storage - Synology NAS       </span><span class="url">https://100.106.137.64:5001</span></div>
-      <div><span class="dot-out">&#x25CF;</span>  <span class="out">kvm-c225         </span><span class="out">NanoKVM                      </span><span class="url">https://100.67.214.102:443</span></div>
+      <div><span class="dot-out">&#x25CF;</span>  <span class="out">workstation      Welcome to nginx!       </span><span class="url">http://100.101.214.44:80</span></div>
+      <div><span class="dot-out">&#x25CF;</span>  <span class="out">storage          storage - Synology NAS  </span><span class="url">https://100.106.137.64:5001</span></div>
+      <div><span class="dot-out">&#x25CF;</span>  <span class="out">kvm-c225         NanoKVM                 </span><span class="url">https://100.67.214.102:443</span></div>
       <div><span class="dot-out">&#x25CE;</span>  <span class="out">openclaw         </span><span class="dim">(no services)</span></div>
-      <div><span class="dot-out">&#x25CB;</span>  <span class="out dim">iphone</span></div>
+      <div><span class="dot-out">&#x25CB;</span>  <span class="dim">iphone</span></div>
     </div>
   </div>
 </div>
@@ -369,7 +370,7 @@
         </svg>
         macOS
       </h3>
-      <p class="card-sub">Menubar app + CLI &mdash; macOS 13+, Swift required (Xcode)</p>
+      <p class="card-sub">Menubar app + CLI &mdash; macOS 13+, no Xcode required</p>
       <div class="code-block">
         <code>curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash</code>
         <button class="copy-btn" onclick="copy(this, 'curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash')">Copy</button>
@@ -377,8 +378,8 @@
       <br>
       <ol class="steps">
         <li>Clones repo to <code>~/.web-finder</code></li>
-        <li>Builds and installs <code>WebFinder.app</code> to <code>~/Applications</code></li>
-        <li>Installs <code>web-finder</code> CLI to <code>/usr/local/bin</code></li>
+        <li>Downloads &amp; installs <code>WebFinder.app</code></li>
+        <li>Adds <code>web-finder</code> to PATH</li>
       </ol>
     </div>
 
@@ -398,9 +399,9 @@
       </div>
       <br>
       <ol class="steps">
-        <li>Installs Node.js LTS if not already present</li>
+        <li>Installs Node.js LTS if needed</li>
         <li>Clones repo to <code>~/.web-finder</code></li>
-        <li>Installs <code>web-finder</code> CLI to <code>/usr/local/bin</code></li>
+        <li>Adds <code>web-finder</code> to PATH</li>
       </ol>
     </div>
 

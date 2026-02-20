@@ -67,21 +67,25 @@ fi
 
 info "CLI installed: web-finder"
 
-# Mac: build and install the GUI app
+# Mac: download and install the pre-built GUI app
 if [[ "$OS" == "mac" ]]; then
     echo ""
-    if command -v swift &>/dev/null; then
-        info "Building Web Finder.app (this takes ~10s)..."
-        cd "$INSTALL_DIR"
-        bash build.sh > /dev/null 2>&1
-        # Install to ~/Applications, creating it if needed
+    APP_URL="https://github.com/zeulewan/web-finder/releases/latest/download/WebFinder.app.zip"
+    APP_ZIP="$INSTALL_DIR/WebFinder.app.zip"
+
+    info "Downloading Web Finder.app..."
+    if curl -fsSL -o "$APP_ZIP" "$APP_URL"; then
         mkdir -p "$HOME/Applications"
-        cp -r WebFinder.app "$HOME/Applications/"
+        # Remove old version if present
+        rm -rf "$HOME/Applications/WebFinder.app"
+        unzip -q "$APP_ZIP" -d "$HOME/Applications/"
+        rm -f "$APP_ZIP"
+        # Remove quarantine flag so macOS doesn't block unsigned binary
+        xattr -dr com.apple.quarantine "$HOME/Applications/WebFinder.app" 2>/dev/null || true
         info "App installed to ~/Applications/WebFinder.app"
         info "Open it from Finder or run: open ~/Applications/WebFinder.app"
     else
-        warn "Swift not found - skipping GUI app."
-        warn "Install Xcode from the App Store to get the menubar app."
+        warn "Failed to download app - skipping GUI install."
     fi
 fi
 
