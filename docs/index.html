@@ -116,10 +116,12 @@
       gap: 8px;
       border-bottom: 1px solid var(--border);
     }
-    .terminal-bar span {
+    .terminal-dot {
+      display: inline-block;
       width: 12px; height: 12px;
       border-radius: 50%;
       background: #3d444d;
+      flex-shrink: 0;
     }
     .terminal-bar .title {
       font-size: 12px;
@@ -336,7 +338,7 @@
 
   <div class="terminal">
     <div class="terminal-bar">
-      <span></span><span></span><span></span>
+      <span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span>
       <span class="title">web-finder</span>
     </div>
     <div class="terminal-body">
@@ -370,7 +372,7 @@
         </svg>
         macOS
       </h3>
-      <p class="card-sub">Menubar app + CLI &mdash; macOS 13+, no Xcode required</p>
+      <p class="card-sub">Menubar app + CLI &mdash; macOS 13+</p>
       <div class="code-block">
         <code>curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash</code>
         <button class="copy-btn" onclick="copy(this, 'curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash')">Copy</button>
