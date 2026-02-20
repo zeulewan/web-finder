@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-APP="WebScanner.app"
-BINARY="WebScanner"
+APP="WebFinder.app"
+BINARY="WebFinder"
 
 echo "Building $BINARY..."
 swift build -c release 2>&1

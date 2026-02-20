@@ -23,7 +23,7 @@ class ScannerModel: ObservableObject {
 // MARK: - Root view
 
 struct ContentView: View {
-    @StateObject private var model = ScannerModel()
+    @EnvironmentObject private var model: ScannerModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,10 +35,11 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
+            // Re-scan each time the popover opens (if not already scanning)
             model.scan()
         }
-        // Auto-refresh every 30s while popup is open
-        .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
+        // Auto-refresh every 60s while popup is open
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
             model.scan()
         }
     }
@@ -47,7 +48,7 @@ struct ContentView: View {
 
     var headerBar: some View {
         HStack {
-            Text("Web Scanner")
+            Text("Web Finder")
                 .font(.system(size: 13, weight: .semibold))
             Spacer()
             if model.scanning {
@@ -152,7 +153,6 @@ struct DeviceSection: View {
     @ViewBuilder
     var serviceList: some View {
         if !device.online {
-            // Show nothing for offline devices (header says it all)
             EmptyView()
         } else if device.services.isEmpty {
             Text("No web services")

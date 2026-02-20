@@ -3,9 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>WebScanner</string>
+    <string>Web Finder</string>
+    <key>CFBundleDisplayName</key>
+    <string>Web Finder</string>
     <key>CFBundleIdentifier</key>
-    <string>com.zeul.web-scanner</string>
+    <string>com.zeul.web-finder</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>

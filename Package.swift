@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "WebScanner",
+    name: "WebFinder",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
-            name: "WebScanner",
+            name: "WebFinder",
             path: "Sources"
         )
     ]
