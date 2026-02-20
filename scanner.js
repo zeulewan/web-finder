@@ -4,8 +4,22 @@
 const { exec } = require('child_process');
 const net = require('net');
 
-const SCAN_PORTS = [3000, 4000, 5000, 8000, 8001, 8002, 8003, 8004, 8080, 8081, 8888];
-const PORT_TIMEOUT = 800;
+const SCAN_PORTS = [
+  80, 443,
+  3000, 3001,
+  4000, 4001,
+  5000, 5001,       // Synology DSM
+  6006,             // TensorBoard
+  7860,             // Gradio
+  8000, 8001, 8002, 8003, 8004, 8005,
+  8080, 8081, 8082,
+  8443,
+  8888,             // Jupyter
+  9000, 9001,
+  9090,             // Prometheus
+  9443,
+];
+const PORT_TIMEOUT = 900;
 
 const TAILSCALE_PATHS = [
   'tailscale',
@@ -38,10 +52,10 @@ async function scanPorts(host, ports = SCAN_PORTS) {
   return checks.filter(c => c.open).map(c => c.port);
 }
 
-// Extract zensical processes from ps output.
+// Find zensical processes via pgrep (fast, no TCC delay).
 // Parses --dev-addr HOST:PORT or --port PORT flags.
 async function scanLocal() {
-  const out = await execPromise('ps aux');
+  const out = await execPromise('pgrep -fl zensical 2>/dev/null');
   if (!out) return [];
 
   const results = [];
@@ -87,11 +101,12 @@ async function scanTailscale() {
   if (!status.Peer) return { peers: [] };
 
   const peers = Object.values(status.Peer)
-    .map(peer => ({
-      name: (peer.HostName || peer.DNSName || 'unknown').replace(/\..*$/, ''),
-      ip: (peer.TailscaleIPs || [])[0],
-      online: peer.Online || false,
-    }))
+    .map(peer => {
+      const hn = peer.HostName || '';
+      const dn = (peer.DNSName || '').replace(/\..*$/, '');
+      const name = (!hn || hn.toLowerCase() === 'localhost') ? (dn || 'unknown') : hn.replace(/\..*$/, '');
+      return { name, ip: (peer.TailscaleIPs || [])[0], online: peer.Online || false };
+    })
     .filter(p => p.ip);
 
   const scanned = await Promise.all(

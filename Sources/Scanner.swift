@@ -64,10 +64,13 @@ enum Scanner {
         async let remote  = scanTailscaleDevices()
 
         var all = [await local] + (await remote)
-        // Sort: local first, then online before offline, then alphabetical
+        // Sort: local first, then has-services before empty, then online before offline, then alphabetical
         all.sort {
             if $0.isLocal != $1.isLocal { return $0.isLocal }
-            if $0.online != $1.online   { return $0.online }
+            let lhs = $0.services.isEmpty ? 1 : 0
+            let rhs = $1.services.isEmpty ? 1 : 0
+            if lhs != rhs { return lhs < rhs }
+            if $0.online != $1.online { return $0.online }
             return $0.name < $1.name
         }
         return all
