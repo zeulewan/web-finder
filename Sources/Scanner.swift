@@ -55,10 +55,14 @@ enum Scanner {
         22:   "SSH",
         25:   "SMTP",
         53:   "DNS",
-        5000: "AirPlay",
         5353: "mDNS",
         6006: "TensorBoard",
         9090: "Prometheus",
+    ]
+
+    // Services only found on macOS
+    static let macOnlyServices: [Int: String] = [
+        5000: "AirPlay",
     ]
 
     static let tailscalePaths = [
@@ -100,7 +104,7 @@ enum Scanner {
         let ports    = await openPorts
         let projects = await psProjects
 
-        let services = await fetchServices(host: "127.0.0.1", ports: ports, hints: projects)
+        let services = await fetchServices(host: "127.0.0.1", ports: ports, hints: projects, os: "darwin")
         return Device(name: hostname, ip: "127.0.0.1", isLocal: true, os: "darwin",
                       online: true, services: services)
     }
@@ -173,7 +177,7 @@ enum Scanner {
                                       os: peer.os, online: false, services: [])
                     }
                     let openPorts = await tcpScanPorts(host: peer.ip)
-                    let services  = await fetchServices(host: peer.ip, ports: openPorts, hints: [:])
+                    let services  = await fetchServices(host: peer.ip, ports: openPorts, hints: [:], os: peer.os)
                     return Device(name: peer.name, ip: peer.ip, isLocal: false,
                                   os: peer.os, online: true, services: services)
                 }
@@ -226,8 +230,10 @@ enum Scanner {
 
     // MARK: - HTTP title fetching
 
-    static func fetchServices(host: String, ports: [Int], hints: [Int: String]) async -> [WebService] {
-        await withTaskGroup(of: WebService?.self) { group in
+    static func fetchServices(host: String, ports: [Int], hints: [Int: String], os: String? = nil) async -> [WebService] {
+        let isDarwin = os?.lowercased() == "darwin"
+        let lookup = isDarwin ? knownServices.merging(macOnlyServices) { _, new in new } : knownServices
+        return await withTaskGroup(of: WebService?.self) { group in
             for port in ports {
                 group.addTask {
                     // If we have a known name from pgrep, use it directly
@@ -237,7 +243,7 @@ enum Scanner {
                     }
                     if let svc = await fetchTitle(host: host, port: port) { return svc }
                     // Fallback to known service name for non-HTTP ports
-                    if let name = knownServices[port] {
+                    if let name = lookup[port] {
                         let url = URL(string: "http://\(host):\(port)")!
                         return WebService(title: name, port: port, url: url, isHTTPS: false)
                     }

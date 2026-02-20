@@ -95,22 +95,26 @@ const KNOWN_SERVICES = {
   22:   'SSH',
   25:   'SMTP',
   53:   'DNS',
-  5000: 'AirPlay',
   5353: 'mDNS',
   6006: 'TensorBoard',
   9090: 'Prometheus',
 };
 
+const MAC_ONLY_SERVICES = {
+  5000: 'AirPlay',
+};
+
 /** Try http then https (or https first for known HTTPS ports); return { title, url } or null. */
-async function fetchService(host, port) {
+async function fetchService(host, port, isDarwin = false) {
   const schemes = HTTPS_FIRST_PORTS.has(port) ? ['https', 'http'] : ['http', 'https'];
   for (const scheme of schemes) {
     const url   = `${scheme}://${host}:${port}`;
     const title = await fetchTitle(url);
     if (title) return { title, url };
   }
-  if (KNOWN_SERVICES[port]) {
-    return { title: KNOWN_SERVICES[port], url: `http://${host}:${port}` };
+  const lookup = isDarwin ? { ...KNOWN_SERVICES, ...MAC_ONLY_SERVICES } : KNOWN_SERVICES;
+  if (lookup[port]) {
+    return { title: lookup[port], url: `http://${host}:${port}` };
   }
   return null;
 }
@@ -157,7 +161,7 @@ async function scanLocal() {
     if (hints[port]) {
       return { title: hints[port], host: '127.0.0.1', port, url: `http://127.0.0.1:${port}` };
     }
-    const svc = await fetchService('127.0.0.1', port);
+    const svc = await fetchService('127.0.0.1', port, true); // local is always darwin
     if (!svc) return null;
     return { title: svc.title, host: '127.0.0.1', port, url: svc.url };
   }));
@@ -190,7 +194,7 @@ async function scanTailscale() {
       const hn   = peer.HostName || '';
       const dn   = (peer.DNSName || '').replace(/\..*$/, '');
       const name = (!hn || hn.toLowerCase() === 'localhost') ? (dn || 'unknown') : hn.replace(/\..*$/, '');
-      return { name, ip: (peer.TailscaleIPs || [])[0], online: peer.Online || false };
+      return { name, ip: (peer.TailscaleIPs || [])[0], online: peer.Online || false, os: peer.OS || null };
     })
     .filter(p => p.ip);
 
@@ -199,7 +203,8 @@ async function scanTailscale() {
 
     const openPorts = await scanPorts(peer.ip);
     const services  = await Promise.all(openPorts.map(async (port) => {
-      const svc = await fetchService(peer.ip, port);
+      const isDarwin = (peer.os || '').toLowerCase() === 'darwin';
+      const svc = await fetchService(peer.ip, port, isDarwin);
       return svc
         ? { title: svc.title, port, url: svc.url }
         : { title: `Port ${port}`, port, url: `http://${peer.ip}:${port}` };
