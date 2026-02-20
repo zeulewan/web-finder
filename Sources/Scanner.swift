@@ -242,12 +242,10 @@ enum Scanner {
                         return WebService(title: projectName, port: port, url: url, isHTTPS: false)
                     }
                     if let svc = await fetchTitle(host: host, port: port) { return svc }
-                    // Fallback to known service name for non-HTTP ports
-                    if let name = lookup[port] {
-                        let url = URL(string: "http://\(host):\(port)")!
-                        return WebService(title: name, port: port, url: url, isHTTPS: false)
-                    }
-                    return nil
+                    // Fallback to known service name, then generic "Port X"
+                    let name = lookup[port] ?? "Port \(port)"
+                    let url = URL(string: "http://\(host):\(port)")!
+                    return WebService(title: name, port: port, url: url, isHTTPS: false)
                 }
             }
             var services: [WebService] = []

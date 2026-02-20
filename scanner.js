@@ -113,10 +113,7 @@ async function fetchService(host, port, isDarwin = false) {
     if (title) return { title, url };
   }
   const lookup = isDarwin ? { ...KNOWN_SERVICES, ...MAC_ONLY_SERVICES } : KNOWN_SERVICES;
-  if (lookup[port]) {
-    return { title: lookup[port], url: `http://${host}:${port}` };
-  }
-  return null;
+  return { title: lookup[port] ?? `Port ${port}`, url: `http://${host}:${port}` };
 }
 
 function decodeEntities(str) {
