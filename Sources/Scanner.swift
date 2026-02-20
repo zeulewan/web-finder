@@ -292,9 +292,10 @@ enum Scanner {
                     .replacingOccurrences(of: "&quot;", with: "\"")
                     .replacingOccurrences(of: "&nbsp;", with: " ")
                     .replacingOccurrences(of: "&#160;", with: " ")
-                title = raw.isEmpty ? "Port \(url.port ?? 80)" : raw
+                if raw.isEmpty { return nil }
+                title = raw
             } else {
-                title = "Port \(url.port ?? 80)"
+                return nil
             }
             return (title, finalURL)
         } catch {
