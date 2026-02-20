@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Finder</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d1117;
+      --surface:  #161b22;
+      --border:   #30363d;
+      --text:     #e6edf3;
+      --muted:    #8b949e;
+      --green:    #3fb950;
+      --blue:     #58a6ff;
+      --purple:   #bc8cff;
+      --orange:   #f0883e;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ---- NAV ---- */
+    nav {
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    nav .logo { font-size: 17px; font-weight: 600; }
+    nav .badge {
+      background: var(--green);
+      color: #000;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 12px;
+    }
+    nav a.gh {
+      margin-left: auto;
+      color: var(--muted);
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ---- HERO ---- */
+    .hero {
+      max-width: 760px;
+      margin: 80px auto 60px;
+      padding: 0 24px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: clamp(36px, 6vw, 56px);
+      font-weight: 700;
+      letter-spacing: -1px;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, var(--text) 40%, var(--muted));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero p {
+      font-size: 18px;
+      color: var(--muted);
+      max-width: 560px;
+      margin: 0 auto 40px;
+    }
+    .platforms {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 40px;
+    }
+    .platform-tag {
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 16px;
+      font-size: 13px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .platform-tag .dot { width: 7px; height: 7px; border-radius: 50%; }
+    .dot-green { background: var(--green); }
+    .dot-blue  { background: var(--blue); }
+
+    /* ---- TERMINAL ---- */
+    .terminal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      text-align: left;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+    .terminal-bar {
+      background: #21262d;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .terminal-bar span {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #3d444d;
+    }
+    .terminal-bar .title {
+      font-size: 12px;
+      color: var(--muted);
+      margin-left: 6px;
+    }
+    .terminal-body {
+      padding: 18px 20px;
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+      font-size: 13.5px;
+      line-height: 1.7;
+    }
+    .cmd  { color: var(--green); }
+    .out  { color: var(--text); }
+    .dim  { color: var(--muted); }
+    .url  { color: var(--blue); }
+    .dot-out { color: var(--green); }
+
+    /* ---- INSTALL ---- */
+    section { max-width: 760px; margin: 0 auto; padding: 60px 24px; }
+    section + section { border-top: 1px solid var(--border); }
+
+    h2 {
+      font-size: 26px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .section-sub {
+      color: var(--muted);
+      margin-bottom: 32px;
+      font-size: 15px;
+    }
+
+    .install-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 600px) {
+      .install-grid { grid-template-columns: 1fr; }
+    }
+
+    .install-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+    }
+    .install-card h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .install-card .card-sub {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    .code-block {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 12px 14px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 12.5px;
+      color: var(--green);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .code-block code { flex: 1; word-break: break-all; }
+    .copy-btn {
+      background: var(--border);
+      border: none;
+      color: var(--muted);
+      border-radius: 5px;
+      padding: 4px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+      flex-shrink: 0;
+    }
+    .copy-btn:hover { background: #484f58; color: var(--text); }
+    .copy-btn.copied { background: var(--green); color: #000; }
+
+    .steps {
+      list-style: none;
+      counter-reset: steps;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .steps li {
+      counter-increment: steps;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .steps li::before {
+      content: counter(steps);
+      background: var(--border);
+      color: var(--text);
+      border-radius: 50%;
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* ---- FEATURES ---- */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+    }
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .feature-icon { font-size: 22px; margin-bottom: 10px; }
+    .feature-card h4 { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+    .feature-card p  { font-size: 13px; color: var(--muted); }
+
+    /* ---- CLI USAGE ---- */
+    .cli-examples {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .cli-row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 13px;
+    }
+    .cli-row .cmd-text { color: var(--green); min-width: 240px; }
+    .cli-row .desc     { color: var(--muted); font-size: 12px; font-family: inherit; }
+
+    /* ---- FOOTER ---- */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 30px 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    footer a { color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <span class="logo">Web Finder</span>
+  <span class="badge">v1.0</span>
+  <a class="gh" href="https://github.com/zeulewan/web-finder" target="_blank">
+    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+    </svg>
+    GitHub
+  </a>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <h1>Find web interfaces<br>across your network</h1>
+  <p>Web Finder scans your local machine and all Tailscale peers for running web services - and puts them one click away.</p>
+
+  <div class="platforms">
+    <div class="platform-tag">
+      <div class="dot dot-green"></div>
+      macOS &mdash; menubar app + CLI
+    </div>
+    <div class="platform-tag">
+      <div class="dot dot-blue"></div>
+      Ubuntu / Linux &mdash; CLI
+    </div>
+  </div>
+
+  <div class="terminal">
+    <div class="terminal-bar">
+      <span></span><span></span><span></span>
+      <span class="title">web-finder</span>
+    </div>
+    <div class="terminal-body">
+      <div><span class="cmd">$</span> <span class="out">web-finder</span></div>
+      <div>&nbsp;</div>
+      <div class="dim">Local:</div>
+      <div><span class="dot-out">&#x25CF;</span>  <span class="out">cen800               </span> <span class="url">http://127.0.0.1:8000</span></div>
+      <div>&nbsp;</div>
+      <div class="dim">Tailscale:</div>
+      <div><span class="dot-out">&#x25CF;</span>  <span class="out">workstation          </span> <span class="url">http://100.101.214.44:80</span></div>
+      <div><span class="dot-out">&#x25CF;</span>  <span class="out">storage              </span> <span class="url">http://100.81.195.18:5000</span></div>
+      <div><span class="dot-out">&#x25CF;</span>  <span class="out">storage              </span> <span class="url">http://100.81.195.18:443</span></div>
+      <div><span class="dot-out">&#x25CE;</span>  <span class="out">openclaw             </span> <span class="dim">online, no services</span></div>
+      <div><span class="dot-out">&#x25CB;</span>  <span class="out dim">iphone               </span> <span class="dim">offline</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- INSTALL -->
+<section id="install">
+  <h2>Install</h2>
+  <p class="section-sub">One command installs everything for your platform.</p>
+
+  <div class="install-grid">
+
+    <!-- Mac -->
+    <div class="install-card">
+      <h3>
+        <svg width="16" height="16" fill="var(--blue)" viewBox="0 0 16 16">
+          <path d="M11.182.008C11.148-.03 9.923.023 8.857 1.18c-1.066 1.156-.902 2.482-.878 2.516.024.034 1.52.087 2.475-1.258.955-1.345.762-2.391.728-2.43zm3.314 11.733c-.048-.096-2.325-1.234-2.113-3.422.212-2.189 1.675-2.789 1.698-2.854.023-.065-.597-.79-1.254-1.157a3.692 3.692 0 0 0-1.563-.434c-.108-.003-.483-.095-1.254.116-.508.139-1.653.589-1.968.607-.316.018-1.256-.522-2.267-.665-.647-.125-1.333.131-1.824.328-.49.196-1.422.754-2.074 2.237-.652 1.482-.311 3.83-.067 4.56.244.729.625 1.924 1.273 2.796.576.984 1.34 1.667 1.659 1.899.319.232 1.219.386 1.843.067.502-.308 1.408-.485 1.766-.472.357.013 1.061.154 1.782.539.571.197 1.111.115 1.652-.105.541-.221 1.324-1.059 2.238-2.758.347-.79.505-1.217.473-1.282z"/>
+        </svg>
+        macOS
+      </h3>
+      <p class="card-sub">Menubar app + CLI &mdash; macOS 13+, Swift required (Xcode)</p>
+      <div class="code-block">
+        <code>curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash</code>
+        <button class="copy-btn" onclick="copy(this, 'curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash')">Copy</button>
+      </div>
+      <br>
+      <ol class="steps">
+        <li>Script clones the repo to <code style="color:var(--text)">~/.web-finder</code></li>
+        <li>Builds <code style="color:var(--text)">WebFinder.app</code> and installs to <code style="color:var(--text)">~/Applications</code></li>
+        <li>Installs <code style="color:var(--text)">web-finder</code> CLI to <code style="color:var(--text)">/usr/local/bin</code></li>
+      </ol>
+    </div>
+
+    <!-- Ubuntu -->
+    <div class="install-card">
+      <h3>
+        <svg width="16" height="16" fill="var(--orange)" viewBox="0 0 16 16">
+          <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm14.5 0a.5.5 0 0 0-.5-.5h-12a.5.5 0 0 0-.5.5v12a.5.5 0 0 0 .5.5h12a.5.5 0 0 0 .5-.5V2z"/>
+          <path d="M3 5.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5zM3 8a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9A.5.5 0 0 1 3 8zm0 2.5a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1-.5-.5z"/>
+        </svg>
+        Ubuntu / Linux
+      </h3>
+      <p class="card-sub">CLI only &mdash; requires Node.js (auto-installed if missing)</p>
+      <div class="code-block">
+        <code>curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash</code>
+        <button class="copy-btn" onclick="copy(this, 'curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash')">Copy</button>
+      </div>
+      <br>
+      <ol class="steps">
+        <li>Installs Node.js LTS if not already present</li>
+        <li>Clones the repo to <code style="color:var(--text)">~/.web-finder</code></li>
+        <li>Installs <code style="color:var(--text)">web-finder</code> CLI to <code style="color:var(--text)">/usr/local/bin</code></li>
+      </ol>
+    </div>
+
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features">
+  <h2>What it scans</h2>
+  <p class="section-sub">Automatically detects web interfaces across common ports.</p>
+
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">&#x1F4BB;</div>
+      <h4>Local machine</h4>
+      <p>Scans 127.0.0.1 for open ports and fetches page titles to identify services.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x1F310;</div>
+      <h4>Tailscale peers</h4>
+      <p>Reads <code>tailscale status</code> and scans every online peer in parallel.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x1F4E6;</div>
+      <h4>NAS &amp; storage</h4>
+      <p>Synology DSM, TrueNAS, and other web UIs on ports 80, 443, 5000, 5001.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x1F9EA;</div>
+      <h4>Dev servers</h4>
+      <p>React, Next.js, Vite, and any server on ports 3000-3001, 4000-4001, 8000-8005.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x1F916;</div>
+      <h4>AI / ML tools</h4>
+      <p>Jupyter (8888), Gradio (7860), TensorBoard (6006), and Prometheus (9090).</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x1F4CB;</div>
+      <h4>Agent-friendly CLI</h4>
+      <p>JSON output mode lets AI agents and scripts query your network programmatically.</p>
+    </div>
+  </div>
+</section>
+
+<!-- CLI USAGE -->
+<section id="cli">
+  <h2>CLI usage</h2>
+  <p class="section-sub">Works great standalone or piped into scripts and AI agents.</p>
+
+  <div class="cli-examples">
+    <div class="cli-row">
+      <span class="cmd-text">web-finder</span>
+      <span class="desc">Full scan - local + all Tailscale peers</span>
+    </div>
+    <div class="cli-row">
+      <span class="cmd-text">web-finder --local</span>
+      <span class="desc">Scan local machine only</span>
+    </div>
+    <div class="cli-row">
+      <span class="cmd-text">web-finder --tailscale</span>
+      <span class="desc">Scan Tailscale peers only</span>
+    </div>
+    <div class="cli-row">
+      <span class="cmd-text">web-finder --json</span>
+      <span class="desc">Machine-readable JSON output</span>
+    </div>
+    <div class="cli-row">
+      <span class="cmd-text">web-finder --local --json</span>
+      <span class="desc">Local only, JSON - great for agents</span>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <p>
+    <a href="https://github.com/zeulewan/web-finder" target="_blank">GitHub</a>
+    &nbsp;&mdash;&nbsp;
+    MIT License
+  </p>
+</footer>
+
+<script>
+  function copy(btn, text) {
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  }
+</script>
+
+</body>
+</html>

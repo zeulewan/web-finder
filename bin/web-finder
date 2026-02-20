@@ -1,26 +1,31 @@
 #!/usr/bin/env node
 /**
- * zensical-scan - CLI for finding running Zensical servers
+ * web-finder - scan your Tailscale network for web interfaces
  *
  * Usage:
- *   zensical-scan                 # Scan local + Tailscale, human-readable
- *   zensical-scan --local         # Local only
- *   zensical-scan --tailscale     # Tailscale peers only
- *   zensical-scan --json          # Machine-readable JSON output
- *   zensical-scan --local --json  # Local only, JSON (useful for agents)
+ *   web-finder                 # Scan local + Tailscale, human-readable
+ *   web-finder --local         # Local only
+ *   web-finder --tailscale     # Tailscale peers only
+ *   web-finder --json          # Machine-readable JSON output
+ *   web-finder --local --json  # Local only, JSON (for agents/scripts)
  */
 
 const path = require('path');
-const { scanLocal, scanTailscale } = require(path.join(__dirname, '..', 'scanner'));
+const fs   = require('fs');
+
+// Resolve symlinks so scanner.js is found even when binary is symlinked to /usr/local/bin
+const realBin  = fs.realpathSync(__filename);
+const scanner  = require(path.join(path.dirname(realBin), '..', 'scanner'));
+const { scanLocal, scanTailscale } = scanner;
 
 const args = process.argv.slice(2);
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
-Usage: zensical-scan [options]
+Usage: web-finder [options]
 
 Options:
-  --local, -l       Scan local processes only
+  --local, -l       Scan local machine only
   --tailscale, -t   Scan Tailscale peers only
   --json, -j        Output as JSON (for scripts/agents)
   --help, -h        Show this help
@@ -28,9 +33,10 @@ Options:
 With no options, scans both local and Tailscale.
 
 Examples:
-  zensical-scan                  # Full scan, human-readable
-  zensical-scan --local --json   # Local only, JSON output
-  zensical-scan --tailscale      # Tailscale peers
+  web-finder                   # Full scan, human-readable
+  web-finder --local --json    # Local only, JSON output
+  web-finder --tailscale       # Tailscale peers
+  web-finder --json            # Everything as JSON
 `);
   process.exit(0);
 }
@@ -39,15 +45,14 @@ const wantLocal     = args.includes('--local')     || args.includes('-l');
 const wantTailscale = args.includes('--tailscale') || args.includes('-t');
 const jsonMode      = args.includes('--json')      || args.includes('-j');
 
-// Default: both
 const doLocal     = wantLocal     || (!wantLocal && !wantTailscale);
 const doTailscale = wantTailscale || (!wantLocal && !wantTailscale);
 
 async function main() {
   const result = {};
+  const tasks  = [];
 
-  const tasks = [];
-  if (doLocal)     tasks.push(scanLocal().then(r => { result.local = r; }));
+  if (doLocal)     tasks.push(scanLocal().then(r     => { result.local     = r; }));
   if (doTailscale) tasks.push(scanTailscale().then(r => { result.tailscale = r; }));
   await Promise.all(tasks);
 
@@ -56,14 +61,13 @@ async function main() {
     return;
   }
 
-  // Human-readable output
   if (result.local !== undefined) {
     console.log('\nLocal:');
     if (result.local.length === 0) {
-      console.log('  (none running)');
+      console.log('  (none found)');
     } else {
-      for (const inst of result.local) {
-        console.log(`  \u25CF  ${inst.project.padEnd(20)} ${inst.url}`);
+      for (const s of result.local) {
+        console.log(`  \u25CF  ${s.project.padEnd(20)} ${s.url}`);
       }
     }
   }
@@ -79,7 +83,7 @@ async function main() {
         if (!peer.online) {
           console.log(`  \u25CB  ${peer.name.padEnd(20)} offline`);
         } else if (peer.ports.length === 0) {
-          console.log(`  \u25CE  ${peer.name.padEnd(20)} online, no servers`);
+          console.log(`  \u25CE  ${peer.name.padEnd(20)} online, no services`);
         } else {
           for (const port of peer.ports) {
             console.log(`  \u25CF  ${peer.name.padEnd(20)} http://${peer.ip}:${port}`);
