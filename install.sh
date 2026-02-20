@@ -75,15 +75,14 @@ if [[ "$OS" == "mac" ]]; then
 
     info "Downloading Web Finder.app..."
     if curl -fsSL -o "$APP_ZIP" "$APP_URL"; then
-        mkdir -p "$HOME/Applications"
         # Remove old version if present
-        rm -rf "$HOME/Applications/WebFinder.app"
-        unzip -q "$APP_ZIP" -d "$HOME/Applications/"
+        rm -rf "/Applications/WebFinder.app"
+        sudo unzip -q "$APP_ZIP" -d "/Applications/"
         rm -f "$APP_ZIP"
         # Remove quarantine flag so macOS doesn't block unsigned binary
-        xattr -dr com.apple.quarantine "$HOME/Applications/WebFinder.app" 2>/dev/null || true
-        info "App installed to ~/Applications/WebFinder.app"
-        info "Open it from Finder or run: open ~/Applications/WebFinder.app"
+        sudo xattr -dr com.apple.quarantine "/Applications/WebFinder.app" 2>/dev/null || true
+        info "App installed to /Applications/WebFinder.app"
+        info "Open it from Finder or run: open /Applications/WebFinder.app"
     else
         warn "Failed to download app - skipping GUI install."
     fi
@@ -94,6 +93,6 @@ echo -e "${GREEN}Done!${NC}"
 echo ""
 echo "  CLI:  web-finder --help"
 if [[ "$OS" == "mac" ]]; then
-echo "  App:  open ~/Applications/WebFinder.app"
+echo "  App:  open /Applications/WebFinder.app"
 fi
 echo ""
