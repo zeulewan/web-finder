@@ -21,8 +21,8 @@ const SCAN_PORTS = [
   9090,             // Prometheus
   9443,
 ];
-const PORT_TIMEOUT  = 900;
-const HTTP_TIMEOUT  = 3000;
+const PORT_TIMEOUT  = 600;
+const HTTP_TIMEOUT  = 1000;
 const READ_LIMIT    = 16384; // stop reading after 16KB (enough for <title>)
 
 const TAILSCALE_PATHS = [
