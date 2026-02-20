@@ -260,6 +260,8 @@ enum Scanner {
                     .replacingOccurrences(of: "&gt;",   with: ">")
                     .replacingOccurrences(of: "&#39;",  with: "'")
                     .replacingOccurrences(of: "&quot;", with: "\"")
+                    .replacingOccurrences(of: "&nbsp;", with: " ")
+                    .replacingOccurrences(of: "&#160;", with: " ")
                 title = raw.isEmpty ? "Port \(url.port ?? 80)" : raw
             } else {
                 title = "Port \(url.port ?? 80)"
