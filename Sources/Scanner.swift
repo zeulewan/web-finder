@@ -50,6 +50,17 @@ enum Scanner {
         9443,
     ]
 
+    static let knownServices: [Int: String] = [
+        21:   "FTP",
+        22:   "SSH",
+        25:   "SMTP",
+        53:   "DNS",
+        5000: "AirPlay",
+        5353: "mDNS",
+        6006: "TensorBoard",
+        9090: "Prometheus",
+    ]
+
     static let tailscalePaths = [
         "/usr/local/bin/tailscale",
         "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
@@ -224,7 +235,13 @@ enum Scanner {
                         let url = URL(string: "http://\(host):\(port)")!
                         return WebService(title: projectName, port: port, url: url, isHTTPS: false)
                     }
-                    return await fetchTitle(host: host, port: port)
+                    if let svc = await fetchTitle(host: host, port: port) { return svc }
+                    // Fallback to known service name for non-HTTP ports
+                    if let name = knownServices[port] {
+                        let url = URL(string: "http://\(host):\(port)")!
+                        return WebService(title: name, port: port, url: url, isHTTPS: false)
+                    }
+                    return nil
                 }
             }
             var services: [WebService] = []

@@ -90,6 +90,17 @@ function fetchTitle(urlStr) {
 
 const HTTPS_FIRST_PORTS = new Set([443, 8443, 9443]);
 
+const KNOWN_SERVICES = {
+  21:   'FTP',
+  22:   'SSH',
+  25:   'SMTP',
+  53:   'DNS',
+  5000: 'AirPlay',
+  5353: 'mDNS',
+  6006: 'TensorBoard',
+  9090: 'Prometheus',
+};
+
 /** Try http then https (or https first for known HTTPS ports); return { title, url } or null. */
 async function fetchService(host, port) {
   const schemes = HTTPS_FIRST_PORTS.has(port) ? ['https', 'http'] : ['http', 'https'];
@@ -97,6 +108,9 @@ async function fetchService(host, port) {
     const url   = `${scheme}://${host}:${port}`;
     const title = await fetchTitle(url);
     if (title) return { title, url };
+  }
+  if (KNOWN_SERVICES[port]) {
+    return { title: KNOWN_SERVICES[port], url: `http://${host}:${port}` };
   }
   return null;
 }
