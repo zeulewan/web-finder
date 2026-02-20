@@ -98,6 +98,24 @@
     .dot-green { background: var(--green); }
     .dot-blue  { background: var(--blue); }
 
+    /* ---- SCREENSHOT ---- */
+    .screenshot-wrap {
+      max-width: 480px;
+      margin: 48px auto 0;
+    }
+    .screenshot-wrap img {
+      width: 100%;
+      border-radius: 14px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.55);
+      display: block;
+    }
+    .screenshot-caption {
+      text-align: center;
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 12px;
+    }
+
     /* ---- TERMINAL ---- */
     .terminal {
       background: var(--surface);
@@ -355,6 +373,12 @@
       <div><span class="dot-out">&#x25CB;</span>  <span class="dim">iphone</span></div>
     </div>
   </div>
+</div>
+
+<!-- SCREENSHOT -->
+<div class="screenshot-wrap">
+  <img src="app-screenshot.png" alt="Web Finder menubar app showing local and Tailscale services">
+  <p class="screenshot-caption">macOS menubar app - local machine and Tailscale peers at a glance</p>
 </div>
 
 <!-- INSTALL -->
