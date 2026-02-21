@@ -169,28 +169,25 @@ enum Scanner {
               let ip = line.components(separatedBy: ":").last?.trimmingCharacters(in: .whitespaces),
               !ip.isEmpty else { return nil }
 
-        async let ispName = getISPName()
         let gatewayPorts = [80, 443, 8080, 8443]
         let openPorts = await tcpScanPorts(host: ip, ports: gatewayPorts)
         guard !openPorts.isEmpty else { return nil }
 
-        var services = await fetchServices(host: ip, ports: openPorts, hints: [:], showAll: true)
+        // Only show ports with a real HTTP response (no showAll - gateway ports often have
+        // open TCP ports that don't serve anything useful)
+        let services = await fetchServices(host: ip, ports: openPorts, hints: [:], showAll: false)
         guard !services.isEmpty else { return nil }
 
-        // Use the first real page title as device name (e.g. "UniFi OS"),
+        // Use the page title as device name (e.g. "UniFi OS"),
         // fall back to ISP name + Modem, then just "Gateway"
-        let realTitle = services.first(where: { !$0.title.hasPrefix("Port ") })?.title
-        // Label generic "Port N" titles as "Admin Page"
-        services = services.map { svc in
-            svc.title.hasPrefix("Port ") ?
-                WebService(title: "Admin Page", port: svc.port, url: svc.url, isHTTPS: svc.isHTTPS) : svc
-        }
-
-        let isp = await ispName
         let name: String
-        if let realTitle { name = realTitle }
-        else if let isp { name = "\(isp) Modem" }
-        else { name = "Gateway" }
+        if let title = services.first?.title {
+            name = title
+        } else if let isp = await getISPName() {
+            name = "\(isp) Modem"
+        } else {
+            name = "Gateway"
+        }
         return Device(name: name, ip: ip, isLocal: false, isGateway: true, os: nil,
                       online: true, services: services)
     }

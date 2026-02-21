@@ -246,23 +246,21 @@ async function scanGateway({ showAll = false } = {}) {
   const openPorts = await scanPorts(ip, gatewayPorts);
   if (openPorts.length === 0) return null;
 
+  // Only show ports with a real HTTP response (no showAll - gateway ports
+  // often have open TCP ports that don't serve anything useful)
   const services = await Promise.all(openPorts.map(async (port) => {
-    const svc = await fetchService(ip, port, { showAll: true });
+    const svc = await fetchService(ip, port, { showAll: false });
     if (!svc) return null;
     return { title: svc.title, host: ip, port, url: svc.url };
   }));
 
   const found = dedup(services.filter(Boolean));
   if (found.length === 0) return null;
-  // Use the first real page title as device name (e.g. "UniFi OS"),
+  // Use the page title as device name (e.g. "UniFi OS"),
   // fall back to ISP name + Modem, then just "Gateway"
-  const realTitle = found.find(s => !s.title.startsWith('Port '))?.title;
-  // Label generic fallback titles as "Admin Page"
-  for (const s of found) {
-    if (s.title.startsWith('Port ')) s.title = 'Admin Page';
-  }
+  const title = found[0]?.title;
   const isp = await getISPName();
-  const name = realTitle || (isp ? `${isp} Modem` : 'Gateway');
+  const name = title || (isp ? `${isp} Modem` : 'Gateway');
   return { name, ip, services: found };
 }
 

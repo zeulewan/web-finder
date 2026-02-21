@@ -219,30 +219,30 @@ enum Scanner {
     // MARK: - Gateway
 
     static func scanGateway(showAll: Bool = false) async -> Device? {
-        guard let ip = getDefaultGateway(), !ip.isEmpty else { return nil }
+        guard let baseIP = getDefaultGateway(), !baseIP.isEmpty else { return nil }
 
-        async let ispName = getISPName()
+        // Try .1 first, then .254 if no ports found
+        let candidates = [baseIP, baseIP.replacingOccurrences(of: #"\.\d+$"#, with: ".254", options: .regularExpression)]
+        var ip = baseIP
+        var openPorts: [Int] = []
         let gatewayPorts = [80, 443, 8080, 8443]
-        let openPorts = await tcpScanPorts(host: ip, ports: gatewayPorts)
+        for candidate in candidates {
+            openPorts = await tcpScanPorts(host: candidate, ports: gatewayPorts)
+            if !openPorts.isEmpty { ip = candidate; break }
+        }
         guard !openPorts.isEmpty else { return nil }
 
-        var services = await fetchServices(host: ip, ports: openPorts, hints: [:], showAll: true)
+        let services = await fetchServices(host: ip, ports: openPorts, hints: [:], showAll: false)
         guard !services.isEmpty else { return nil }
 
-        // Use the first real page title as device name (e.g. "UniFi OS"),
-        // fall back to ISP name + Modem, then just "Gateway"
-        let realTitle = services.first(where: { !$0.title.hasPrefix("Port ") })?.title
-        // Label generic "Port N" titles as "Admin Page"
-        services = services.map { svc in
-            svc.title.hasPrefix("Port ") ?
-                WebService(title: "Admin Page", port: svc.port, url: svc.url, isHTTPS: svc.isHTTPS) : svc
-        }
-
-        let isp = await ispName
         let name: String
-        if let realTitle { name = realTitle }
-        else if let isp { name = "\(isp) Modem" }
-        else { name = "Gateway" }
+        if let title = services.first?.title {
+            name = title
+        } else if let isp = await getISPName() {
+            name = "\(isp) Modem"
+        } else {
+            name = "Gateway"
+        }
         return Device(name: name, ip: ip, isLocal: false, isGateway: true, os: nil,
                       online: true, services: services)
     }
@@ -263,8 +263,7 @@ enum Scanner {
     }
 
     private static func getDefaultGateway() -> String? {
-        // Get our local IP by connecting a UDP socket to a public address,
-        // then infer gateway as .1 on the same subnet (works for typical home networks)
+        // Get our local IP by connecting a UDP socket to a public address
         let fd = socket(AF_INET, SOCK_DGRAM, 0)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
@@ -291,12 +290,10 @@ enum Scanner {
         }
         guard gsResult == 0 else { return nil }
 
-        // Set last octet to 1 for gateway
-        var gwAddr = localAddr.sin_addr
-        var raw = gwAddr.s_addr.bigEndian
-        raw = (raw & 0xFFFFFF00) | 1
-        gwAddr.s_addr = raw.bigEndian
-
+        // Infer gateway as .1 on the same subnet (covers most home networks)
+        let raw = localAddr.sin_addr.s_addr.bigEndian
+        var gwAddr = in_addr()
+        gwAddr.s_addr = ((raw & 0xFFFFFF00) | 1).bigEndian
         var buf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
         inet_ntop(AF_INET, &gwAddr, &buf, socklen_t(INET_ADDRSTRLEN))
         return String(cString: buf)
