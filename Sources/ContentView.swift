@@ -10,9 +10,13 @@ class ScannerModel: ObservableObject {
     @Published var showAllPorts = false {
         didSet { UserDefaults.standard.set(showAllPorts, forKey: "showAllPorts") }
     }
+    @Published var showAllDevices = false {
+        didSet { UserDefaults.standard.set(showAllDevices, forKey: "showAllDevices") }
+    }
 
     init() {
         showAllPorts = UserDefaults.standard.bool(forKey: "showAllPorts")
+        showAllDevices = UserDefaults.standard.bool(forKey: "showAllDevices")
     }
 
     func scan() {
@@ -32,7 +36,6 @@ class ScannerModel: ObservableObject {
 struct ContentView: View {
     @EnvironmentObject private var model: ScannerModel
     @State private var showSettings = false
-    @State private var showInactive = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -97,9 +100,9 @@ struct ContentView: View {
 
             Toggle(isOn: $model.showAllPorts) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Show all open ports")
+                    Text("Show non-web ports")
                         .font(.system(size: 12))
-                    Text("Include non-web services like AirPlay, SSH")
+                    Text("AirPlay, SSH, and ports without a web page")
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
                 }
@@ -109,6 +112,18 @@ struct ContentView: View {
             .onChange(of: model.showAllPorts) { _ in
                 model.scan()
             }
+
+            Toggle(isOn: $model.showAllDevices) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show all devices")
+                        .font(.system(size: 12))
+                    Text("Include devices with no web services")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
 
             Spacer()
         }
@@ -135,34 +150,12 @@ struct ContentView: View {
                     .padding(16)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(activeDevices) { device in
+                    let visible = model.showAllDevices ? model.devices : activeDevices
+                    ForEach(visible) { device in
                         DeviceSection(device: device)
-                        Divider().padding(.horizontal, 10)
-                    }
-
-                    if !inactiveDevices.isEmpty {
-                        if showInactive {
-                            ForEach(inactiveDevices) { device in
-                                DeviceSection(device: device)
-                                if device.id != inactiveDevices.last?.id {
-                                    Divider().padding(.horizontal, 10)
-                                }
-                            }
+                        if device.id != visible.last?.id {
+                            Divider().padding(.horizontal, 10)
                         }
-
-                        HoverButton {
-                            withAnimation(.easeInOut(duration: 0.15)) { showInactive.toggle() }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: showInactive ? "chevron.up" : "chevron.down")
-                                    .font(.system(size: 9))
-                                Text(showInactive ? "Hide" : "\(inactiveDevices.count) more")
-                                    .font(.system(size: 11))
-                            }
-                            .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
                     }
                 }
                 .padding(.vertical, 4)
