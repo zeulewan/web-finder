@@ -226,10 +226,17 @@ enum Scanner {
         let openPorts = await tcpScanPorts(host: ip, ports: gatewayPorts)
         guard !openPorts.isEmpty else { return nil }
 
-        let services = await fetchServices(host: ip, ports: openPorts, hints: [:], showAll: true)
+        var services = await fetchServices(host: ip, ports: openPorts, hints: [:], showAll: true)
         guard !services.isEmpty else { return nil }
 
-        let name = await ispName ?? "Gateway"
+        // Label generic "Port N" titles as "Admin Page"
+        services = services.map { svc in
+            svc.title.hasPrefix("Port ") ?
+                WebService(title: "Admin Page", port: svc.port, url: svc.url, isHTTPS: svc.isHTTPS) : svc
+        }
+
+        let isp = await ispName
+        let name = isp != nil ? "\(isp!) Modem" : "Gateway"
         return Device(name: name, ip: ip, isLocal: false, isGateway: true, os: nil,
                       online: true, services: services)
     }

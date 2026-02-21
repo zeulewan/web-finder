@@ -254,7 +254,12 @@ async function scanGateway({ showAll = false } = {}) {
 
   const found = dedup(services.filter(Boolean));
   if (found.length === 0) return null;
-  const name = await getISPName() || 'Gateway';
+  const isp = await getISPName();
+  const name = isp ? `${isp} Modem` : 'Gateway';
+  // Label gateway services as "Admin Page" instead of "Port 443" etc.
+  for (const s of found) {
+    if (s.title.startsWith('Port ')) s.title = 'Admin Page';
+  }
   return { name, ip, services: found };
 }
 
