@@ -36,7 +36,7 @@ struct Device: Identifiable {
 enum Scanner {
     static let ports: [Int] = [
         80, 443,
-        3000, 3001,
+        3000, 3001, 3460,
         4000, 4001,
         5000, 5001,
         6006, 7860,

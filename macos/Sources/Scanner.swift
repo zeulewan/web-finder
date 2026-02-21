@@ -36,7 +36,7 @@ enum Scanner {
     /// Broad set of ports covering dev servers, NAS, Jupyter, Prometheus, etc.
     static let ports: [Int] = [
         80, 443,
-        3000, 3001,
+        3000, 3001, 3460,
         4000, 4001,
         5000, 5001,       // Synology DSM (HTTP/HTTPS)
         6006,             // TensorBoard

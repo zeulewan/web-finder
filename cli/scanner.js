@@ -8,7 +8,7 @@ const https = require('https');
 
 const SCAN_PORTS = [
   80, 443,
-  3000, 3001,
+  3000, 3001, 3460,
   4000, 4001,
   5000, 5001,       // Synology DSM
   6006,             // TensorBoard
