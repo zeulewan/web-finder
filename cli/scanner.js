@@ -153,7 +153,13 @@ function fetchWithRedirect(urlStr) {
 }
 
 function cleanTitle(str) {
-  return str.replace(/^Home\s*[-–—|:]\s*/i, '');
+  // MkDocs/zensical: "Page Title - Site Name" -> use site name (last part)
+  const sep = str.match(/\s+[-–—|]\s+/);
+  if (sep) {
+    const parts = str.split(sep[0]);
+    if (parts.length >= 2) return parts[parts.length - 1].trim();
+  }
+  return str;
 }
 
 function decodeEntities(str) {

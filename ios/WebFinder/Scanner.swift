@@ -398,7 +398,10 @@ enum Scanner {
                 .replacingOccurrences(of: "&quot;", with: "\"")
                 .replacingOccurrences(of: "&nbsp;", with: " ")
                 .replacingOccurrences(of: "&#160;", with: " ")
-            raw = raw.replacingOccurrences(of: #"^Home\s*[-–—|:]\s*"#, with: "", options: .regularExpression)
+            // "Page Title - Site Name" -> use site name (last part after separator)
+            if let sepRange = raw.range(of: #"\s+[-–—|]\s+"#, options: [.regularExpression, .backwards]) {
+                raw = String(raw[sepRange.upperBound...]).trimmingCharacters(in: .whitespaces)
+            }
             if raw.isEmpty { return .notFound }
             return .found(raw, url)
         } catch {
