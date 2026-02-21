@@ -15,7 +15,7 @@ const fs   = require('fs');
 
 // Resolve symlinks so scanner.js is found even when binary is symlinked to /usr/local/bin
 const realBin = fs.realpathSync(__filename);
-const { scanLocal, scanTailscale } = require(path.join(path.dirname(realBin), '..', 'scanner'));
+const { scanLocal, scanTailscale } = require(path.join(path.dirname(realBin), '..', 'scanner.js'));
 
 const args = process.argv.slice(2);
 

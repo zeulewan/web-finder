@@ -57,12 +57,12 @@ else
 fi
 
 # Install CLI
-chmod +x "$INSTALL_DIR/bin/web-finder"
+chmod +x "$INSTALL_DIR/cli/bin/web-finder"
 
 if [ -w "$BIN_DIR" ]; then
-    ln -sf "$INSTALL_DIR/bin/web-finder" "$BIN_DIR/web-finder"
+    ln -sf "$INSTALL_DIR/cli/bin/web-finder" "$BIN_DIR/web-finder"
 else
-    sudo ln -sf "$INSTALL_DIR/bin/web-finder" "$BIN_DIR/web-finder"
+    sudo ln -sf "$INSTALL_DIR/cli/bin/web-finder" "$BIN_DIR/web-finder"
 fi
 
 info "CLI installed: web-finder"

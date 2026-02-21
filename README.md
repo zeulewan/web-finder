@@ -14,6 +14,16 @@ curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh 
 
 - **macOS**: Downloads the menubar app + installs the CLI
 - **Ubuntu/Linux**: Installs the CLI (auto-installs Node.js if missing)
+- **iOS**: Available on the [App Store](https://apps.apple.com/app/web-finder-for-tailscale/id6759476914)
+
+## Project Structure
+
+```
+macos/    macOS menubar app (Swift/SwiftUI)
+ios/      iOS app (Swift/SwiftUI, App Store)
+cli/      Node.js CLI (macOS & Linux)
+docs/     Website (GitHub Pages)
+```
 
 ## Menubar App (macOS)
 
@@ -23,6 +33,14 @@ A menubar icon that shows all discovered web services at a glance. Click any ser
 - Auto-refreshes every 60 seconds
 - Settings toggle to show all open ports (including non-web like AirPlay, SSH)
 - Right-click to copy URLs
+
+## iOS App
+
+Scans your Tailscale peers for web services using OAuth. One-time setup with a Tailscale API key, credentials never expire.
+
+- Pull-to-refresh scanning
+- Tap any service to open in Safari
+- Available on the App Store
 
 ## CLI
 
