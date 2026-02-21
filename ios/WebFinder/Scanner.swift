@@ -263,37 +263,30 @@ enum Scanner {
     }
 
     private static func getDefaultGateway() -> String? {
-        // Get our local IP by connecting a UDP socket to a public address
-        let fd = socket(AF_INET, SOCK_DGRAM, 0)
-        guard fd >= 0 else { return nil }
-        defer { close(fd) }
+        // Use getifaddrs to find the WiFi interface IP (en0), then infer .1 gateway.
+        // This avoids the UDP socket trick which can route through Tailscale.
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else { return nil }
+        defer { freeifaddrs(ifaddr) }
 
-        var addr = sockaddr_in()
-        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-        addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port = CFSwapInt16HostToBig(53)
-        inet_pton(AF_INET, "8.8.8.8", &addr.sin_addr)
+        var wifiIP: UInt32?
+        for ptr in sequence(first: firstAddr, next: { $0.pointee.ifa_next }) {
+            let flags = Int32(ptr.pointee.ifa_flags)
+            guard flags & IFF_UP != 0, flags & IFF_LOOPBACK == 0 else { continue }
+            guard ptr.pointee.ifa_addr.pointee.sa_family == UInt8(AF_INET) else { continue }
 
-        let result = withUnsafePointer(to: &addr) { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
-                Darwin.connect(fd, sa, socklen_t(MemoryLayout<sockaddr_in>.size))
-            }
+            let name = String(cString: ptr.pointee.ifa_name)
+            // en0 = WiFi on iOS, skip utun (Tailscale/VPN) and pdp_ip (cellular)
+            guard name == "en0" else { continue }
+
+            let addr = ptr.pointee.ifa_addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee }
+            wifiIP = addr.sin_addr.s_addr.bigEndian
+            break
         }
-        guard result == 0 else { return nil }
 
-        var localAddr = sockaddr_in()
-        var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
-        let gsResult = withUnsafeMutablePointer(to: &localAddr) { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
-                getsockname(fd, sa, &addrLen)
-            }
-        }
-        guard gsResult == 0 else { return nil }
-
-        // Infer gateway as .1 on the same subnet (covers most home networks)
-        let raw = localAddr.sin_addr.s_addr.bigEndian
+        guard let ip = wifiIP else { return nil }
         var gwAddr = in_addr()
-        gwAddr.s_addr = ((raw & 0xFFFFFF00) | 1).bigEndian
+        gwAddr.s_addr = ((ip & 0xFFFFFF00) | 1).bigEndian
         var buf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
         inet_ntop(AF_INET, &gwAddr, &buf, socklen_t(INET_ADDRSTRLEN))
         return String(cString: buf)
