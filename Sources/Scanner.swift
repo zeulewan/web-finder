@@ -242,13 +242,17 @@ enum Scanner {
                         return WebService(title: projectName, port: port, url: url, isHTTPS: false)
                     }
                     if let svc = await fetchTitle(host: host, port: port) { return svc }
-                    // Non-web ports: only show with showAll
-                    if showAll {
-                        let name = lookup[port] ?? "Port \(port)"
-                        let url = URL(string: "http://\(host):\(port)")!
-                        return WebService(title: name, port: port, url: url, isHTTPS: false)
+                    // Known non-web service (AirPlay, SSH, etc.) - only show with showAll
+                    if let name = lookup[port] {
+                        if showAll {
+                            let url = URL(string: "http://\(host):\(port)")!
+                            return WebService(title: name, port: port, url: url, isHTTPS: false)
+                        }
+                        return nil
                     }
-                    return nil
+                    // Unknown port with no title - show as "Port X" (could be a web interface)
+                    let url = URL(string: "http://\(host):\(port)")!
+                    return WebService(title: "Port \(port)", port: port, url: url, isHTTPS: false)
                 }
             }
             var services: [WebService] = []
