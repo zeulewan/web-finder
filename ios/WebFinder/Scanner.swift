@@ -255,21 +255,7 @@ enum Scanner {
             }
             var services: [WebService] = []
             for await s in group { if let s { services.append(s) } }
-            // Merge duplicates with same title: prefer HTTPS, then lower port
-            var seen: [String: Int] = [:]
-            var deduped: [WebService] = []
-            let sorted = services.sorted { $0.port < $1.port }
-            for svc in sorted {
-                if let idx = seen[svc.title] {
-                    if svc.isHTTPS && !deduped[idx].isHTTPS {
-                        deduped[idx] = svc
-                    }
-                } else {
-                    seen[svc.title] = deduped.count
-                    deduped.append(svc)
-                }
-            }
-            return deduped
+            return services.sorted { $0.port < $1.port }
         }
     }
 

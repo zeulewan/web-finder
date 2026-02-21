@@ -343,6 +343,13 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    LabeledContent("Version") {
+                        Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section {
                     Button(role: .destructive) {
                         UserDefaults.standard.removeObject(forKey: "tsClientID")
                         UserDefaults.standard.removeObject(forKey: "tsClientSecret")

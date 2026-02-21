@@ -126,6 +126,10 @@ struct ContentView: View {
             .controlSize(.small)
 
             Spacer()
+
+            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
