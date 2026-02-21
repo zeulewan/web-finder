@@ -1,61 +1,49 @@
 # Web Finder
 
+Find web interfaces running across your local machine and Tailscale network.
 
-Menubar app + CLI for finding running Zensical servers - locally and across Tailscale.
+**[zeulewan.github.io/web-finder](https://zeulewan.github.io/web-finder/)**
 
-## Desktop App
+![Web Finder menubar app](docs/app-screenshot.png)
+
+## Install
 
 ```bash
-npm install
-npm start
+curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash
 ```
 
-A radar icon appears in your menu bar. Click it to see all running Zensical instances. Click **Open →** to launch in your browser. Auto-refreshes every 30 seconds while open.
+- **macOS**: Downloads the menubar app + installs the CLI
+- **Ubuntu/Linux**: Installs the CLI (auto-installs Node.js if missing)
+
+## Menubar App (macOS)
+
+A menubar icon that shows all discovered web services at a glance. Click any service to open in your browser.
+
+- Pre-scans on launch for instant results
+- Auto-refreshes every 60 seconds
+- Settings toggle to show all open ports (including non-web like AirPlay, SSH)
+- Right-click to copy URLs
 
 ## CLI
 
-The CLI is useful for scripts and agents (Claude Code, etc.).
-
 ```bash
-# Full scan - local + Tailscale
-node bin/zensical-scan
-
-# Local processes only
-node bin/zensical-scan --local
-
-# Tailscale peers only
-node bin/zensical-scan --tailscale
-
-# JSON output (for agents/scripts)
-node bin/zensical-scan --json
-node bin/zensical-scan --local --json
+web-finder                   # Full scan, web interfaces only
+web-finder --all             # Full scan, all open ports
+web-finder --local           # Local machine only
+web-finder --tailscale       # Tailscale peers only
+web-finder --json            # JSON output (for scripts/agents)
+web-finder --local --json    # Local only, JSON
 ```
-
-### Install globally
-
-```bash
-npm install -g .
-zensical-scan --local --json
-```
-
-### Multi-machine setup
-
-Install on each Tailscale machine so agents can call it locally:
-
-```bash
-# On each machine (workstation, etc.)
-git clone <repo>
-cd zensical-scanner
-npm install -g .
-```
-
-Then any agent on any machine can run `zensical-scan --json` to get a machine-readable list of what's running locally.
 
 ## How it works
 
-- **Local**: Parses `ps aux` for `zensical serve` processes and extracts the port from `--dev-addr` or `--port` flags, plus the project name from the virtualenv path.
-- **Tailscale**: Queries `tailscale status --json` for peers, then TCP-scans common ports (3000, 4000, 5000, 8000-8004, 8080-8081, 8888) in parallel on each online peer.
+- **Local**: TCP-scans common ports, fetches HTTP `<title>` tags, identifies processes via `pgrep`
+- **Tailscale**: Queries `tailscale status --json` for peers, scans each online peer in parallel
+- **Filtering**: By default only shows ports serving actual web pages. Use `--all` or the settings toggle to include non-web services
 
 ## Ports scanned
 
-`3000, 4000, 5000, 8000, 8001, 8002, 8003, 8004, 8080, 8081, 8888`
+```
+80, 443, 3000, 3001, 4000, 4001, 5000, 5001, 6006, 7860,
+8000-8005, 8080-8082, 8443, 8888, 9000, 9001, 9090, 9443
+```
