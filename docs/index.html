@@ -4,131 +4,208 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Web Finder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #0d1117;
-      --surface:  #161b22;
-      --border:   #30363d;
-      --text:     #e6edf3;
-      --muted:    #8b949e;
-      --green:    #3fb950;
-      --blue:     #58a6ff;
-      --purple:   #bc8cff;
-      --orange:   #f0883e;
+      --bg:        #080c14;
+      --bg-wash:   #0c1220;
+      --surface:   #111827;
+      --surface-2: #1a2332;
+      --border:    #1e2d3d;
+      --border-lt: #263545;
+      --text:      #e2e8f0;
+      --text-dim:  #94a3b8;
+      --text-faint:#64748b;
+      --cyan:      #22d3ee;
+      --cyan-dim:  #0e7490;
+      --teal:      #2dd4bf;
+      --amber:     #f59e0b;
+      --green:     #34d399;
+      --blue:      #60a5fa;
+      --radius:    12px;
     }
+
+    html { scroll-behavior: smooth; }
 
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: 'DM Sans', -apple-system, sans-serif;
       line-height: 1.6;
+      overflow-x: hidden;
     }
 
-    a { color: var(--blue); text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    a { color: var(--cyan); text-decoration: none; transition: color 0.2s; }
+    a:hover { color: var(--teal); }
+
+    /* ---- AMBIENT BACKGROUND ---- */
+    .bg-glow {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .bg-glow::before {
+      content: '';
+      position: absolute;
+      width: 800px; height: 800px;
+      top: -200px; left: 50%;
+      transform: translateX(-50%);
+      background: radial-gradient(circle, rgba(34,211,238,0.06) 0%, transparent 70%);
+      animation: drift 20s ease-in-out infinite alternate;
+    }
+    .bg-glow::after {
+      content: '';
+      position: absolute;
+      width: 600px; height: 600px;
+      bottom: 10%; right: -10%;
+      background: radial-gradient(circle, rgba(45,212,191,0.04) 0%, transparent 70%);
+      animation: drift 25s ease-in-out infinite alternate-reverse;
+    }
+    @keyframes drift {
+      0%   { transform: translateX(-50%) translateY(0); }
+      100% { transform: translateX(-40%) translateY(40px); }
+    }
 
     /* ---- NAV ---- */
     nav {
-      border-bottom: 1px solid var(--border);
-      padding: 16px 32px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 14px 28px;
       display: flex;
       align-items: center;
       gap: 12px;
+      background: rgba(8,12,20,0.8);
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+      border-bottom: 1px solid rgba(30,45,61,0.5);
     }
-    nav .logo { font-size: 17px; font-weight: 600; }
+    nav .logo {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
     nav .badge {
-      background: var(--green);
+      background: linear-gradient(135deg, var(--cyan-dim), var(--cyan));
       color: #000;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 700;
       padding: 2px 8px;
-      border-radius: 12px;
+      border-radius: 10px;
+      letter-spacing: 0.5px;
     }
     nav a.gh {
       margin-left: auto;
-      color: var(--muted);
-      font-size: 14px;
+      color: var(--text-faint);
+      font-size: 13px;
       display: flex;
       align-items: center;
       gap: 6px;
+      transition: color 0.2s;
     }
+    nav a.gh:hover { color: var(--text); }
 
     /* ---- HERO ---- */
     .hero {
-      max-width: 760px;
-      margin: 80px auto 60px;
-      padding: 0 24px;
+      max-width: 840px;
+      margin: 0 auto;
+      padding: 100px 28px 80px;
       text-align: center;
     }
     .hero h1 {
-      font-size: clamp(36px, 6vw, 56px);
+      font-size: clamp(34px, 5.5vw, 54px);
       font-weight: 700;
-      letter-spacing: -1px;
+      letter-spacing: -1.5px;
+      line-height: 1.15;
       margin-bottom: 20px;
-      background: linear-gradient(135deg, var(--text) 40%, var(--muted));
+      background: linear-gradient(160deg, #fff 20%, var(--cyan) 80%, var(--teal));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
     .hero p {
-      font-size: 18px;
-      color: var(--muted);
-      max-width: 560px;
-      margin: 0 auto 40px;
+      font-size: 17px;
+      color: var(--text-dim);
+      max-width: 520px;
+      margin: 0 auto 36px;
+      line-height: 1.7;
     }
+
     .platforms {
       display: flex;
       gap: 10px;
       justify-content: center;
       flex-wrap: wrap;
-      margin-bottom: 40px;
+      margin-bottom: 52px;
     }
     .platform-tag {
       border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 6px 16px;
+      border-radius: 100px;
+      padding: 7px 18px;
       font-size: 13px;
-      color: var(--muted);
+      color: var(--text-dim);
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 7px;
+      background: rgba(17,24,39,0.5);
+      transition: border-color 0.3s, background 0.3s;
     }
-    .platform-tag .dot { width: 7px; height: 7px; border-radius: 50%; }
-    .dot-green { background: var(--green); }
-    .dot-blue  { background: var(--blue); }
+    .platform-tag:hover {
+      border-color: var(--border-lt);
+      background: rgba(17,24,39,0.8);
+    }
+    .platform-tag .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .dot-green { background: var(--green); box-shadow: 0 0 8px rgba(52,211,153,0.4); }
+    .dot-cyan  { background: var(--cyan);  box-shadow: 0 0 8px rgba(34,211,238,0.4); }
 
-    /* ---- SCREENSHOT ---- */
-    .screenshot-wrap {
-      max-width: 640px;
-      margin: 48px auto 0;
+    /* ---- SHOWCASE (screenshot + terminal) ---- */
+    .showcase {
+      display: flex;
+      flex-direction: column;
+      gap: 40px;
+      max-width: 660px;
+      margin: 0 auto;
     }
+
+    .showcase-item {
+      position: relative;
+    }
+
+    .showcase-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      margin-bottom: 14px;
+      text-align: center;
+    }
+
     .screenshot-wrap img {
       width: 100%;
-      border-radius: 14px;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.55);
+      border-radius: var(--radius);
+      box-shadow:
+        0 4px 24px rgba(0,0,0,0.4),
+        0 0 0 1px rgba(30,45,61,0.5);
       display: block;
-    }
-    .screenshot-caption {
-      text-align: center;
-      font-size: 13px;
-      color: var(--muted);
-      margin-top: 12px;
     }
 
     /* ---- TERMINAL ---- */
     .terminal {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: var(--radius);
       overflow: hidden;
       text-align: left;
-      max-width: 640px;
-      margin: 0 auto;
     }
     .terminal-bar {
-      background: #21262d;
-      padding: 10px 16px;
+      background: var(--bg-wash);
+      padding: 11px 16px;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -136,88 +213,102 @@
     }
     .terminal-dot {
       display: inline-block;
-      width: 12px; height: 12px;
+      width: 11px; height: 11px;
       border-radius: 50%;
-      background: #3d444d;
+      background: var(--border-lt);
       flex-shrink: 0;
     }
     .terminal-bar .title {
-      font-size: 12px;
-      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-faint);
       margin-left: 6px;
       white-space: nowrap;
     }
     .terminal-body {
-      padding: 18px 20px;
-      font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
-      font-size: 13.5px;
-      line-height: 1.7;
+      padding: 18px 22px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.75;
     }
     .cmd  { color: var(--green); }
     .out  { color: var(--text); }
-    .dim  { color: var(--muted); }
-    .url  { color: var(--blue); }
+    .dim  { color: var(--text-faint); }
+    .url  { color: var(--cyan); }
     .dot-out { color: var(--green); }
 
-    /* ---- INSTALL ---- */
-    section { max-width: 760px; margin: 0 auto; padding: 60px 24px; }
-    section + section { border-top: 1px solid var(--border); }
+    /* ---- SECTIONS ---- */
+    .content-section {
+      max-width: 840px;
+      margin: 0 auto;
+      padding: 80px 28px;
+    }
+    .content-section + .content-section {
+      border-top: 1px solid var(--border);
+    }
 
     h2 {
-      font-size: 26px;
-      font-weight: 600;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.8px;
       margin-bottom: 8px;
     }
     .section-sub {
-      color: var(--muted);
-      margin-bottom: 32px;
+      color: var(--text-dim);
+      margin-bottom: 36px;
       font-size: 15px;
     }
 
+    /* ---- INSTALL ---- */
     .install-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 20px;
+      gap: 18px;
     }
-    @media (max-width: 600px) {
+    @media (max-width: 640px) {
       .install-grid { grid-template-columns: 1fr; }
     }
 
     .install-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 24px;
+      border-radius: var(--radius);
+      padding: 26px;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .install-card:hover {
+      border-color: var(--border-lt);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.25);
     }
     .install-card h3 {
       font-size: 16px;
       font-weight: 600;
-      margin-bottom: 6px;
+      margin-bottom: 5px;
       display: flex;
       align-items: center;
       gap: 8px;
     }
     .install-card .card-sub {
-      color: var(--muted);
+      color: var(--text-faint);
       font-size: 13px;
-      margin-bottom: 16px;
+      margin-bottom: 18px;
     }
 
     .code-block {
-      background: #0d1117;
+      background: var(--bg);
       border: 1px solid var(--border);
-      border-radius: 7px;
-      padding: 12px 14px 10px;
-      font-family: "SF Mono", "Fira Code", monospace;
+      border-radius: 8px;
+      padding: 13px 16px;
+      font-family: 'JetBrains Mono', monospace;
       font-size: 12px;
-      color: var(--green);
+      color: var(--cyan);
       position: relative;
     }
     .code-block code {
       display: block;
       word-break: break-all;
       line-height: 1.6;
-      padding-right: 52px; /* room for the button */
+      padding-right: 52px;
     }
     .copy-btn {
       position: absolute;
@@ -225,16 +316,17 @@
       right: 10px;
       background: var(--border);
       border: none;
-      color: var(--muted);
-      border-radius: 5px;
-      padding: 3px 8px;
+      color: var(--text-faint);
+      border-radius: 6px;
+      padding: 4px 10px;
       font-size: 11px;
+      font-family: 'DM Sans', sans-serif;
       cursor: pointer;
       white-space: nowrap;
-      transition: background 0.15s, color 0.15s;
+      transition: all 0.2s;
     }
-    .copy-btn:hover { background: #484f58; color: var(--text); }
-    .copy-btn.copied { background: var(--green); color: #000; }
+    .copy-btn:hover { background: var(--border-lt); color: var(--text); }
+    .copy-btn.copied { background: var(--cyan); color: #000; }
 
     .steps {
       list-style: none;
@@ -242,7 +334,7 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
-      margin-top: 16px;
+      margin-top: 18px;
     }
     .steps li {
       counter-increment: steps;
@@ -250,7 +342,7 @@
       gap: 10px;
       align-items: baseline;
       font-size: 13px;
-      color: var(--muted);
+      color: var(--text-dim);
       line-height: 1.5;
     }
     .steps li::before {
@@ -263,16 +355,16 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 11px;
-      font-weight: 600;
+      font-size: 10px;
+      font-weight: 700;
       flex-shrink: 0;
     }
     .steps li code {
-      font-family: "SF Mono", "Fira Code", monospace;
-      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
       color: var(--text);
       background: var(--border);
-      padding: 1px 5px;
+      padding: 1px 6px;
       border-radius: 4px;
       white-space: nowrap;
     }
@@ -280,51 +372,132 @@
     /* ---- FEATURES ---- */
     .features-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
     }
+    @media (max-width: 720px) {
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 480px) {
+      .features-grid { grid-template-columns: 1fr; }
+    }
+
     .feature-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 20px;
+      border-radius: var(--radius);
+      padding: 22px;
+      transition: border-color 0.3s, transform 0.2s;
     }
-    .feature-icon { font-size: 22px; margin-bottom: 10px; }
-    .feature-card h4 { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
-    .feature-card p  { font-size: 13px; color: var(--muted); }
+    .feature-card:hover {
+      border-color: var(--border-lt);
+      transform: translateY(-2px);
+    }
+    .feature-icon {
+      width: 36px; height: 36px;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      margin-bottom: 14px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+    }
+    .feature-card h4 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .feature-card p {
+      font-size: 13px;
+      color: var(--text-dim);
+      line-height: 1.55;
+    }
+    .feature-card code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      color: var(--text);
+      background: var(--border);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
 
     /* ---- CLI USAGE ---- */
     .cli-examples {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 8px;
     }
     .cli-row {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 14px 18px;
+      padding: 14px 20px;
       display: flex;
       align-items: center;
-      gap: 16px;
-      font-family: "SF Mono", "Fira Code", monospace;
+      gap: 20px;
+      transition: border-color 0.3s;
+    }
+    .cli-row:hover { border-color: var(--border-lt); }
+    .cli-row .cmd-text {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--cyan);
+      min-width: 250px;
+      flex-shrink: 0;
+    }
+    .cli-row .desc {
+      color: var(--text-faint);
       font-size: 13px;
     }
-    .cli-row .cmd-text { color: var(--green); min-width: 240px; }
-    .cli-row .desc     { color: var(--muted); font-size: 12px; font-family: inherit; }
+    @media (max-width: 600px) {
+      .cli-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+      }
+      .cli-row .cmd-text { min-width: unset; }
+    }
 
     /* ---- FOOTER ---- */
     footer {
       border-top: 1px solid var(--border);
-      padding: 30px 24px;
+      padding: 36px 28px;
       text-align: center;
-      color: var(--muted);
+      color: var(--text-faint);
       font-size: 13px;
     }
-    footer a { color: var(--muted); }
+    footer a { color: var(--text-faint); }
+    footer a:hover { color: var(--text-dim); }
+
+    /* ---- ANIMATIONS ---- */
+    .fade-up {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .fade-up.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ---- MOBILE ---- */
+    @media (max-width: 480px) {
+      .hero { padding: 72px 20px 60px; }
+      .hero h1 { letter-spacing: -1px; }
+      .hero p { font-size: 15px; }
+      .content-section { padding: 56px 20px; }
+      nav { padding: 12px 16px; }
+      .showcase { gap: 32px; }
+      .terminal-body { padding: 14px 16px; font-size: 11.5px; }
+      h2 { font-size: 24px; }
+    }
   </style>
 </head>
 <body>
+
+<div class="bg-glow"></div>
 
 <!-- NAV -->
 <nav>
@@ -340,49 +513,55 @@
 
 <!-- HERO -->
 <div class="hero">
-  <h1>Find web interfaces<br>across your network</h1>
-  <p>Web Finder scans your local machine and all Tailscale peers for running web services - and puts them one click away.</p>
+  <h1 class="fade-up">Find web interfaces<br>across your network</h1>
+  <p class="fade-up">Web Finder scans your local machine and all Tailscale peers for running web services, and puts them one click away.</p>
 
-  <div class="platforms">
+  <div class="platforms fade-up">
     <div class="platform-tag">
       <div class="dot dot-green"></div>
       macOS &mdash; menubar app + CLI
     </div>
     <div class="platform-tag">
-      <div class="dot dot-blue"></div>
+      <div class="dot dot-cyan"></div>
       Ubuntu / Linux &mdash; CLI
     </div>
   </div>
 
-  <div class="screenshot-wrap">
-    <img src="app-screenshot.png" alt="Web Finder menubar app showing local and Tailscale services">
-    <p class="screenshot-caption">macOS menubar app</p>
-  </div>
+  <div class="showcase">
+    <div class="showcase-item fade-up">
+      <div class="showcase-label">Menubar App</div>
+      <div class="screenshot-wrap">
+        <img src="app-screenshot.png" alt="Web Finder menubar app showing local and Tailscale services">
+      </div>
+    </div>
 
-  <div class="terminal">
-    <div class="terminal-bar">
-      <span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span>
-      <span class="title">web-finder</span>
-    </div>
-    <div class="terminal-body">
-      <div><span class="cmd">$</span> <span class="out">web-finder</span></div>
-      <div>&nbsp;</div>
-      <div class="dim">Local:</div>
-      <div><span class="dot-out">&#x25CF;</span>  <span class="out">cen800                        </span><span class="url">http://127.0.0.1:8000</span></div>
-      <div><span class="dot-out">&#x25CF;</span>  <span class="out">Web Finder                    </span><span class="url">http://127.0.0.1:8001</span></div>
-      <div>&nbsp;</div>
-      <div class="dim">Tailscale:</div>
-      <div><span class="dot-out">&#x25CF;</span>  <span class="out">kvm-c225         NanoKVM                 </span><span class="url">https://100.67.214.102:443</span></div>
-      <div><span class="dot-out">&#x25CF;</span>  <span class="out">openclaw         Home - Robot Docs       </span><span class="url">http://100.81.195.18:8000</span></div>
-      <div><span class="dot-out">&#x25CF;</span>  <span class="out">storage          storage - Synology NAS  </span><span class="url">https://100.106.137.64:5001</span></div>
-      <div><span class="dot-out">&#x25CF;</span>  <span class="out">workstation      Home - Robot Docs       </span><span class="url">http://100.101.214.44:8002</span></div>
+    <div class="showcase-item fade-up">
+      <div class="showcase-label">CLI Output</div>
+      <div class="terminal">
+        <div class="terminal-bar">
+          <span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span>
+          <span class="title">web-finder</span>
+        </div>
+        <div class="terminal-body">
+          <div><span class="cmd">$</span> <span class="out">web-finder</span></div>
+          <div>&nbsp;</div>
+          <div class="dim">Local:</div>
+          <div><span class="dot-out">&#x25CF;</span>  <span class="out">cen800                        </span><span class="url">http://127.0.0.1:8000</span></div>
+          <div><span class="dot-out">&#x25CF;</span>  <span class="out">Web Finder                    </span><span class="url">http://127.0.0.1:8001</span></div>
+          <div>&nbsp;</div>
+          <div class="dim">Tailscale:</div>
+          <div><span class="dot-out">&#x25CF;</span>  <span class="out">kvm-c225         NanoKVM                 </span><span class="url">https://100.67.214.102:443</span></div>
+          <div><span class="dot-out">&#x25CF;</span>  <span class="out">openclaw         Home - Robot Docs       </span><span class="url">http://100.81.195.18:8000</span></div>
+          <div><span class="dot-out">&#x25CF;</span>  <span class="out">storage          storage - Synology NAS  </span><span class="url">https://100.106.137.64:5001</span></div>
+          <div><span class="dot-out">&#x25CF;</span>  <span class="out">workstation      Home - Robot Docs       </span><span class="url">http://100.101.214.44:8002</span></div>
+        </div>
+      </div>
     </div>
   </div>
-  <p class="screenshot-caption">CLI output</p>
 </div>
 
 <!-- INSTALL -->
-<section id="install">
+<div class="content-section fade-up" id="install">
   <h2>Install</h2>
   <p class="section-sub">One command installs everything for your platform.</p>
 
@@ -391,7 +570,7 @@
     <!-- Mac -->
     <div class="install-card">
       <h3>
-        <svg width="16" height="16" fill="var(--blue)" viewBox="0 0 16 16">
+        <svg width="16" height="16" fill="var(--cyan)" viewBox="0 0 16 16">
           <path d="M11.182.008C11.148-.03 9.923.023 8.857 1.18c-1.066 1.156-.902 2.482-.878 2.516.024.034 1.52.087 2.475-1.258.955-1.345.762-2.391.728-2.43zm3.314 11.733c-.048-.096-2.325-1.234-2.113-3.422.212-2.189 1.675-2.789 1.698-2.854.023-.065-.597-.79-1.254-1.157a3.692 3.692 0 0 0-1.563-.434c-.108-.003-.483-.095-1.254.116-.508.139-1.653.589-1.968.607-.316.018-1.256-.522-2.267-.665-.647-.125-1.333.131-1.824.328-.49.196-1.422.754-2.074 2.237-.652 1.482-.311 3.83-.067 4.56.244.729.625 1.924 1.273 2.796.576.984 1.34 1.667 1.659 1.899.319.232 1.219.386 1.843.067.502-.308 1.408-.485 1.766-.472.357.013 1.061.154 1.782.539.571.197 1.111.115 1.652-.105.541-.221 1.324-1.059 2.238-2.758.347-.79.505-1.217.473-1.282z"/>
         </svg>
         macOS
@@ -401,7 +580,6 @@
         <code>curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash</code>
         <button class="copy-btn" onclick="copy(this, 'curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash')">Copy</button>
       </div>
-      <br>
       <ol class="steps">
         <li>Clones repo to <code>~/.web-finder</code></li>
         <li>Downloads &amp; installs <code>WebFinder.app</code></li>
@@ -412,7 +590,7 @@
     <!-- Ubuntu -->
     <div class="install-card">
       <h3>
-        <svg width="16" height="16" fill="var(--orange)" viewBox="0 0 16 16">
+        <svg width="16" height="16" fill="var(--amber)" viewBox="0 0 16 16">
           <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm14.5 0a.5.5 0 0 0-.5-.5h-12a.5.5 0 0 0-.5.5v12a.5.5 0 0 0 .5.5h12a.5.5 0 0 0 .5-.5V2z"/>
           <path d="M3 5.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5zM3 8a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9A.5.5 0 0 1 3 8zm0 2.5a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1-.5-.5z"/>
         </svg>
@@ -423,7 +601,6 @@
         <code>curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash</code>
         <button class="copy-btn" onclick="copy(this, 'curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash')">Copy</button>
       </div>
-      <br>
       <ol class="steps">
         <li>Installs Node.js LTS if needed</li>
         <li>Clones repo to <code>~/.web-finder</code></li>
@@ -432,10 +609,10 @@
     </div>
 
   </div>
-</section>
+</div>
 
 <!-- FEATURES -->
-<section id="features">
+<div class="content-section fade-up" id="features">
   <h2>What it scans</h2>
   <p class="section-sub">Automatically detects web interfaces across common ports.</p>
 
@@ -471,10 +648,10 @@
       <p>JSON output mode lets AI agents and scripts query your network programmatically.</p>
     </div>
   </div>
-</section>
+</div>
 
 <!-- CLI USAGE -->
-<section id="cli">
+<div class="content-section fade-up" id="cli">
   <h2>CLI usage</h2>
   <p class="section-sub">Works great standalone or piped into scripts and AI agents.</p>
 
@@ -492,6 +669,10 @@
       <span class="desc">Scan Tailscale peers only</span>
     </div>
     <div class="cli-row">
+      <span class="cmd-text">web-finder --all</span>
+      <span class="desc">Include non-web ports (AirPlay, SSH, etc.)</span>
+    </div>
+    <div class="cli-row">
       <span class="cmd-text">web-finder --json</span>
       <span class="desc">Machine-readable JSON output</span>
     </div>
@@ -500,13 +681,13 @@
       <span class="desc">Local only, JSON - great for agents</span>
     </div>
   </div>
-</section>
+</div>
 
 <!-- FOOTER -->
 <footer>
   <p>
     <a href="https://github.com/zeulewan/web-finder" target="_blank">GitHub</a>
-    &nbsp;&mdash;&nbsp;
+    &nbsp;&middot;&nbsp;
     MIT License
   </p>
 </footer>
@@ -522,6 +703,18 @@
       }, 2000);
     });
   }
+
+  // Scroll-triggered fade-in
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        observer.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
 </script>
 
 </body>
