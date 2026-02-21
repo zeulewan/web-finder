@@ -65,35 +65,6 @@ async function scanPorts(host, ports = SCAN_PORTS) {
   return checks.filter(c => c.open).map(c => c.port);
 }
 
-/** Fetch the HTML <title> from a URL. Returns null on failure or error response. */
-function fetchTitle(urlStr) {
-  return new Promise((resolve) => {
-    const mod = urlStr.startsWith('https') ? https : http;
-    let buf = '';
-    let settled = false;
-    const done = (val) => { if (!settled) { settled = true; resolve(val); } };
-
-    const req = mod.get(urlStr, {
-      timeout: HTTP_TIMEOUT,
-      rejectUnauthorized: false,   // accept self-signed certs (Synology, etc.)
-      headers: { 'User-Agent': 'web-finder/1.0' },
-    }, (res) => {
-      // If the server rejects the scheme (e.g. HTTP sent to HTTPS port), skip it
-      if (res.statusCode >= 400) { res.destroy(); done(null); return; }
-
-      res.on('data', (chunk) => {
-        buf += chunk;
-        if (buf.length > READ_LIMIT) { req.destroy(); }
-        // Early exit once we have the title
-        const m = buf.match(/<title[^>]*>([^<]*)<\/title>/i);
-        if (m) { req.destroy(); done(decodeEntities(m[1].trim()) || null); }
-      });
-      res.on('end', () => done(null));
-    });
-    req.on('error',   () => done(null));
-    req.on('timeout', () => { req.destroy(); done(null); });
-  });
-}
 
 const HTTPS_FIRST_PORTS = new Set([443, 8443, 9443]);
 
@@ -120,18 +91,64 @@ const MAC_ONLY_SERVICES = {
   5000: 'AirPlay',
 };
 
-/** Try http then https (or https first for known HTTPS ports); return { title, url } or null. */
+/** Try http then https (or https first for known HTTPS ports); return { title, url, redirected } or null. */
 async function fetchService(host, port, { isDarwin = false, showAll = false } = {}) {
   const schemes = HTTPS_FIRST_PORTS.has(port) ? ['https', 'http'] : ['http', 'https'];
   for (const scheme of schemes) {
     const url   = `${scheme}://${host}:${port}`;
-    const title = await fetchTitle(url);
-    if (title) return { title, url };
+    const result = await fetchWithRedirect(url);
+    if (!result) continue;
+    if (result.redirectPort && result.redirectPort !== port) {
+      // This port redirects to another port on the same host - skip it
+      return null;
+    }
+    if (result.title) return { title: result.title, url: result.url || url };
   }
   // No HTML title - only show with showAll
   if (!showAll) return null;
   const lookup = isDarwin ? { ...KNOWN_SERVICES, ...MAC_ONLY_SERVICES } : KNOWN_SERVICES;
   return { title: lookup[port] ?? `Port ${port}`, url: `http://${host}:${port}` };
+}
+
+/** Fetch URL, detect redirects to different ports on same host. */
+function fetchWithRedirect(urlStr) {
+  return new Promise((resolve) => {
+    const mod = urlStr.startsWith('https') ? https : http;
+    let buf = '';
+    let settled = false;
+    const done = (val) => { if (!settled) { settled = true; resolve(val); } };
+    const srcUrl = new URL(urlStr);
+
+    const req = mod.get(urlStr, {
+      timeout: HTTP_TIMEOUT,
+      rejectUnauthorized: false,
+      headers: { 'User-Agent': 'web-finder/1.0' },
+    }, (res) => {
+      // Check for redirect to different port on same host
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        try {
+          const loc = new URL(res.headers.location, urlStr);
+          const redirPort = parseInt(loc.port) || (loc.protocol === 'https:' ? 443 : 80);
+          if (loc.hostname === srcUrl.hostname && redirPort !== parseInt(srcUrl.port || (srcUrl.protocol === 'https:' ? 443 : 80))) {
+            res.destroy();
+            done({ redirectPort: redirPort });
+            return;
+          }
+        } catch {}
+      }
+      if (res.statusCode >= 400) { res.destroy(); done(null); return; }
+
+      res.on('data', (chunk) => {
+        buf += chunk;
+        if (buf.length > READ_LIMIT) { req.destroy(); }
+        const m = buf.match(/<title[^>]*>([^<]*)<\/title>/i);
+        if (m) { req.destroy(); done({ title: decodeEntities(m[1].trim()) || null, url: urlStr }); }
+      });
+      res.on('end', () => done(null));
+    });
+    req.on('error',   () => done(null));
+    req.on('timeout', () => { req.destroy(); done(null); });
+  });
 }
 
 function decodeEntities(str) {
@@ -143,6 +160,18 @@ function decodeEntities(str) {
     .replace(/&quot;/g, '"')
     .replace(/&nbsp;/g, ' ')
     .replace(/&#160;/g, ' ');
+}
+
+/** Remove HTTP port when HTTPS counterpart exists on same host (redirect or same content). */
+function dedup(services) {
+  const pairs = [[80, 443], [8080, 8443]];
+  const skip = new Set();
+  for (const [httpPort, httpsPort] of pairs) {
+    const httpSvc  = services.find(s => s.port === httpPort);
+    const httpsSvc = services.find(s => s.port === httpsPort);
+    if (httpSvc && httpsSvc) skip.add(httpPort);
+  }
+  return services.filter(s => !skip.has(s.port));
 }
 
 // ---- local scan -------------------------------------------------------------
@@ -181,7 +210,7 @@ async function scanLocal({ showAll = false } = {}) {
     return { title: svc.title, host: '127.0.0.1', port, url: svc.url };
   }));
 
-  return services.filter(Boolean);
+  return dedup(services.filter(Boolean));
 }
 
 // ---- gateway scan -----------------------------------------------------------
@@ -212,7 +241,7 @@ async function scanGateway({ showAll = false } = {}) {
     return { title: svc.title, host: ip, port, url: svc.url };
   }));
 
-  const found = services.filter(Boolean);
+  const found = dedup(services.filter(Boolean));
   if (found.length === 0) return null;
   return { name: 'Gateway', ip, services: found };
 }
@@ -257,7 +286,7 @@ async function scanTailscale({ showAll = false } = {}) {
       return { title: svc.title, port, url: svc.url };
     }));
 
-    return { ...peer, services: services.filter(Boolean) };
+    return { ...peer, services: dedup(services.filter(Boolean)) };
   }));
 
   return { peers: scanned };

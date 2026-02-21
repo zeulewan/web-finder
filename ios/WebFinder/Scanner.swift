@@ -262,66 +262,87 @@ enum Scanner {
             }
             var services: [WebService] = []
             for await s in group { if let s { services.append(s) } }
-            return services.sorted { $0.port < $1.port }
+            let httpsPairs: [(Int, Int)] = [(80, 443), (8080, 8443)]
+            var skipPorts: Set<Int> = []
+            for (httpPort, httpsPort) in httpsPairs {
+                if services.contains(where: { $0.port == httpPort }),
+                   services.contains(where: { $0.port == httpsPort }) {
+                    skipPorts.insert(httpPort)
+                }
+            }
+            return services.filter { !skipPorts.contains($0.port) }.sorted { $0.port < $1.port }
         }
     }
 
     static let httpsFirstPorts: Set<Int> = [443, 8443, 9443]
 
+    enum FetchResult {
+        case found(String, URL)
+        case redirectedToPort(Int)
+        case notFound
+    }
+
     static func fetchTitle(host: String, port: Int) async -> WebService? {
         let schemes = httpsFirstPorts.contains(port) ? ["https", "http"] : ["http", "https"]
         for scheme in schemes {
             guard let url = URL(string: "\(scheme)://\(host):\(port)") else { continue }
-            if let (title, finalURL) = await httpTitle(url: url) {
+            let result = await httpTitle(url: url)
+            switch result {
+            case .redirectedToPort(_):
+                return nil
+            case .found(let title, let finalURL):
                 return WebService(title: title, port: port, url: finalURL, isHTTPS: scheme == "https")
+            case .notFound:
+                continue
             }
         }
         return nil
     }
 
-    static func httpTitle(url: URL) async -> (String, URL)? {
+    static func httpTitle(url: URL) async -> FetchResult {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 1.0
         config.timeoutIntervalForResource = 1.5
-        let session = URLSession(configuration: config,
-                                 delegate: TrustAllCertsDelegate(),
-                                 delegateQueue: nil)
+        let delegate = RedirectDetectingDelegate()
+        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         do {
             let (data, response) = try await session.data(from: url)
-            if let http = response as? HTTPURLResponse, http.statusCode >= 400 { return nil }
-            let finalURL = (response as? HTTPURLResponse).flatMap { _ in url } ?? url
+            guard let http = response as? HTTPURLResponse else { return .notFound }
+
+            if let redirectPort = delegate.redirectedToPort, redirectPort != url.port ?? (url.scheme == "https" ? 443 : 80) {
+                return .redirectedToPort(redirectPort)
+            }
+
+            if http.statusCode >= 400 { return .notFound }
 
             guard let html = String(data: data, encoding: .utf8)
-                          ?? String(data: data, encoding: .isoLatin1) else { return nil }
+                          ?? String(data: data, encoding: .isoLatin1) else { return .notFound }
 
-            let title: String
-            if let range = html.range(of: #"<title[^>]*>([^<]+)</title>"#,
-                                      options: [.regularExpression, .caseInsensitive]) {
-                var raw = String(html[range])
-                    .replacingOccurrences(of: #"<title[^>]*>"#, with: "", options: .regularExpression)
-                    .replacingOccurrences(of: "</title>", with: "", options: .caseInsensitive)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                raw = raw
-                    .replacingOccurrences(of: "&amp;",  with: "&")
-                    .replacingOccurrences(of: "&lt;",   with: "<")
-                    .replacingOccurrences(of: "&gt;",   with: ">")
-                    .replacingOccurrences(of: "&#39;",  with: "'")
-                    .replacingOccurrences(of: "&quot;", with: "\"")
-                    .replacingOccurrences(of: "&nbsp;", with: " ")
-                    .replacingOccurrences(of: "&#160;", with: " ")
-                if raw.isEmpty { return nil }
-                title = raw
-            } else {
-                return nil
-            }
-            return (title, finalURL)
+            guard let range = html.range(of: #"<title[^>]*>([^<]+)</title>"#,
+                                          options: [.regularExpression, .caseInsensitive]) else { return .notFound }
+            var raw = String(html[range])
+                .replacingOccurrences(of: #"<title[^>]*>"#, with: "", options: .regularExpression)
+                .replacingOccurrences(of: "</title>", with: "", options: .caseInsensitive)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            raw = raw
+                .replacingOccurrences(of: "&amp;",  with: "&")
+                .replacingOccurrences(of: "&lt;",   with: "<")
+                .replacingOccurrences(of: "&gt;",   with: ">")
+                .replacingOccurrences(of: "&#39;",  with: "'")
+                .replacingOccurrences(of: "&quot;", with: "\"")
+                .replacingOccurrences(of: "&nbsp;", with: " ")
+                .replacingOccurrences(of: "&#160;", with: " ")
+            if raw.isEmpty { return .notFound }
+            return .found(raw, url)
         } catch {
-            return nil
+            return .notFound
         }
     }
 }
 
-class TrustAllCertsDelegate: NSObject, URLSessionDelegate {
+class RedirectDetectingDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
+    var redirectedToPort: Int?
+
     func urlSession(_ session: URLSession,
                     didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
@@ -330,5 +351,16 @@ class TrustAllCertsDelegate: NSObject, URLSessionDelegate {
         } else {
             completionHandler(.cancelAuthenticationChallenge, nil)
         }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        if let redirectURL = request.url {
+            let port = redirectURL.port ?? (redirectURL.scheme == "https" ? 443 : 80)
+            redirectedToPort = port
+        }
+        completionHandler(request)
     }
 }
