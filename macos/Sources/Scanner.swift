@@ -366,6 +366,7 @@ enum Scanner {
                 .replacingOccurrences(of: "&quot;", with: "\"")
                 .replacingOccurrences(of: "&nbsp;", with: " ")
                 .replacingOccurrences(of: "&#160;", with: " ")
+            raw = raw.replacingOccurrences(of: #"^Home\s*[-–—|:]\s*"#, with: "", options: .regularExpression)
             if raw.isEmpty { return .notFound }
             return .found(raw, url)
         } catch {

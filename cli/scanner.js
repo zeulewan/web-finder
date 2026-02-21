@@ -143,13 +143,17 @@ function fetchWithRedirect(urlStr) {
         buf += chunk;
         if (buf.length > READ_LIMIT) { req.destroy(); }
         const m = buf.match(/<title[^>]*>([^<]*)<\/title>/i);
-        if (m) { req.destroy(); done({ title: decodeEntities(m[1].trim()) || null, url: urlStr }); }
+        if (m) { req.destroy(); done({ title: cleanTitle(decodeEntities(m[1].trim())) || null, url: urlStr }); }
       });
       res.on('end', () => done(null));
     });
     req.on('error',   () => done(null));
     req.on('timeout', () => { req.destroy(); done(null); });
   });
+}
+
+function cleanTitle(str) {
+  return str.replace(/^Home\s*[-–—|:]\s*/i, '');
 }
 
 function decodeEntities(str) {
