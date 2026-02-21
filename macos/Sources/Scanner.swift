@@ -16,12 +16,19 @@ struct Device: Identifiable {
     let name: String
     let ip: String
     let isLocal: Bool
+    let isGateway: Bool
     let os: String?       // "linux", "darwin", "windows" from Tailscale
     let online: Bool
     var services: [WebService]
 
+    init(name: String, ip: String, isLocal: Bool, isGateway: Bool = false, os: String?, online: Bool, services: [WebService]) {
+        self.name = name; self.ip = ip; self.isLocal = isLocal; self.isGateway = isGateway
+        self.os = os; self.online = online; self.services = services
+    }
+
     var sfIcon: String {
         if isLocal { return "laptopcomputer" }
+        if isGateway { return "wifi.router" }
         switch os?.lowercased() {
         case "linux":   return "server.rack"
         case "darwin":  return "laptopcomputer"
@@ -162,6 +169,7 @@ enum Scanner {
               let ip = line.components(separatedBy: ":").last?.trimmingCharacters(in: .whitespaces),
               !ip.isEmpty else { return nil }
 
+        async let ispName = getISPName()
         let gatewayPorts = [80, 443, 8080, 8443]
         let openPorts = await tcpScanPorts(host: ip, ports: gatewayPorts)
         guard !openPorts.isEmpty else { return nil }
@@ -169,8 +177,24 @@ enum Scanner {
         let services = await fetchServices(host: ip, ports: openPorts, hints: [:], showAll: true)
         guard !services.isEmpty else { return nil }
 
-        return Device(name: "Gateway", ip: ip, isLocal: false, os: nil,
+        let name = await ispName ?? "Gateway"
+        return Device(name: name, ip: ip, isLocal: false, isGateway: true, os: nil,
                       online: true, services: services)
+    }
+
+    static func getISPName() async -> String? {
+        guard let url = URL(string: "https://ipinfo.io/json") else { return nil }
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 3.0
+        let session = URLSession(configuration: config)
+        do {
+            let (data, _) = try await session.data(from: url)
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let org = json["org"] as? String, !org.isEmpty else { return nil }
+            return org.replacingOccurrences(of: #"^AS\d+\s+"#, with: "", options: .regularExpression)
+        } catch {
+            return nil
+        }
     }
 
     // MARK: - Tailscale

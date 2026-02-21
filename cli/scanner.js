@@ -254,7 +254,25 @@ async function scanGateway({ showAll = false } = {}) {
 
   const found = dedup(services.filter(Boolean));
   if (found.length === 0) return null;
-  return { name: 'Gateway', ip, services: found };
+  const name = await getISPName() || 'Gateway';
+  return { name, ip, services: found };
+}
+
+async function getISPName() {
+  return new Promise((resolve) => {
+    const req = https.get('https://ipinfo.io/json', { timeout: 3000 }, (res) => {
+      let buf = '';
+      res.on('data', (c) => { buf += c; });
+      res.on('end', () => {
+        try {
+          const org = JSON.parse(buf).org || '';
+          resolve(org.replace(/^AS\d+\s+/, '') || null);
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
 }
 
 // ---- Tailscale scan ---------------------------------------------------------
