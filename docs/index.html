@@ -471,6 +471,112 @@
     footer a { color: var(--text-faint); }
     footer a:hover { color: var(--text-dim); }
 
+    /* ---- iOS SECTION ---- */
+    .ios-showcase {
+      display: flex;
+      flex-direction: column;
+      gap: 48px;
+    }
+
+    .phone-gallery {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    .phone-frame {
+      width: 220px;
+      flex-shrink: 0;
+      border-radius: 28px;
+      overflow: hidden;
+      border: 2px solid var(--border-lt);
+      box-shadow:
+        0 8px 40px rgba(0,0,0,0.5),
+        0 0 0 1px rgba(30,45,61,0.3);
+      background: #000;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .phone-frame:hover {
+      transform: translateY(-4px);
+      box-shadow:
+        0 12px 48px rgba(0,0,0,0.6),
+        0 0 0 1px rgba(34,211,238,0.2);
+    }
+
+    .phone-frame img,
+    .phone-frame video {
+      width: 100%;
+      display: block;
+    }
+
+    .ios-features {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+    }
+
+    .ios-feature {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      flex: 1;
+      max-width: 260px;
+      transition: border-color 0.3s;
+    }
+    .ios-feature:hover {
+      border-color: var(--border-lt);
+    }
+
+    .ios-feature-icon {
+      font-size: 20px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .ios-feature strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .ios-feature p {
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+
+    @media (max-width: 720px) {
+      .phone-gallery {
+        gap: 12px;
+      }
+      .phone-frame {
+        width: 160px;
+        border-radius: 20px;
+      }
+      .ios-features {
+        flex-direction: column;
+        align-items: center;
+      }
+      .ios-feature {
+        max-width: 100%;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .phone-gallery {
+        gap: 8px;
+      }
+      .phone-frame {
+        width: 110px;
+        border-radius: 14px;
+      }
+    }
+
     /* ---- ANIMATIONS ---- */
     .fade-up {
       opacity: 0;
@@ -502,7 +608,7 @@
 <!-- NAV -->
 <nav>
   <span class="logo">Web Finder</span>
-  <span class="badge">v1.0.3</span>
+  <span class="badge">v1.0.0</span>
   <a class="gh" href="https://github.com/zeulewan/web-finder" target="_blank">
     <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
       <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
@@ -519,11 +625,15 @@
   <div class="platforms fade-up">
     <div class="platform-tag">
       <div class="dot dot-green"></div>
-      macOS &mdash; menubar app + CLI
+      macOS - menubar app + CLI
     </div>
     <div class="platform-tag">
       <div class="dot dot-cyan"></div>
-      Ubuntu / Linux &mdash; CLI
+      iOS - iPhone app
+    </div>
+    <div class="platform-tag">
+      <div class="dot dot-cyan"></div>
+      Ubuntu / Linux - CLI
     </div>
   </div>
 
@@ -560,12 +670,75 @@
   </div>
 </div>
 
+<!-- iOS -->
+<div class="content-section fade-up" id="ios">
+  <h2>iPhone app</h2>
+  <p class="section-sub">The same scanning power in your pocket. Discover web interfaces from anywhere on your Tailscale network.</p>
+
+  <div class="ios-showcase">
+    <div class="phone-gallery">
+      <div class="phone-frame">
+        <img src="ios-dark.png" alt="Web Finder iOS dark mode showing discovered devices">
+      </div>
+      <div class="phone-frame">
+        <img src="ios-setup.png" alt="Web Finder iOS setup screen for Tailscale OAuth">
+      </div>
+      <div class="phone-frame">
+        <video autoplay muted loop playsinline>
+          <source src="ios-demo.mp4" type="video/mp4">
+        </video>
+      </div>
+    </div>
+
+    <div class="ios-features">
+      <div class="ios-feature">
+        <span class="ios-feature-icon">&#x26A1;</span>
+        <div>
+          <strong>Instant discovery</strong>
+          <p>Scans all Tailscale peers and their open ports in seconds</p>
+        </div>
+      </div>
+      <div class="ios-feature">
+        <span class="ios-feature-icon">&#x1F512;</span>
+        <div>
+          <strong>One-time OAuth setup</strong>
+          <p>Credentials never expire, stored locally on device</p>
+        </div>
+      </div>
+      <div class="ios-feature">
+        <span class="ios-feature-icon">&#x1F310;</span>
+        <div>
+          <strong>Tap to open</strong>
+          <p>Jump straight to any web interface in Safari</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- INSTALL -->
 <div class="content-section fade-up" id="install">
   <h2>Install</h2>
   <p class="section-sub">One command installs everything for your platform.</p>
 
   <div class="install-grid">
+
+    <!-- iOS -->
+    <div class="install-card" style="grid-column: 1 / -1;">
+      <h3>
+        <svg width="16" height="16" fill="var(--cyan)" viewBox="0 0 16 16">
+          <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h11A1.5 1.5 0 0 1 15 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-9zM2.5 3a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5h-11z"/>
+          <path d="M6.5 4.5a.5.5 0 0 0-1 0v7a.5.5 0 0 0 1 0v-7zm4 0a.5.5 0 0 0-1 0v7a.5.5 0 0 0 1 0v-7z"/>
+        </svg>
+        iOS
+      </h3>
+      <p class="card-sub">iPhone app - available on the App Store (free, open source)</p>
+      <ol class="steps">
+        <li>Download from the App Store</li>
+        <li>Create a Tailscale OAuth client with Devices: Read</li>
+        <li>Paste Client ID and Secret into the app</li>
+      </ol>
+    </div>
 
     <!-- Mac -->
     <div class="install-card">
@@ -575,7 +748,7 @@
         </svg>
         macOS
       </h3>
-      <p class="card-sub">Menubar app + CLI &mdash; macOS 13+</p>
+      <p class="card-sub">Menubar app + CLI - macOS 13+</p>
       <div class="code-block">
         <code>curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash</code>
         <button class="copy-btn" onclick="copy(this, 'curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash')">Copy</button>
@@ -596,7 +769,7 @@
         </svg>
         Ubuntu / Linux
       </h3>
-      <p class="card-sub">CLI only &mdash; requires Node.js (auto-installed if missing)</p>
+      <p class="card-sub">CLI only - requires Node.js (auto-installed if missing)</p>
       <div class="code-block">
         <code>curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash</code>
         <button class="copy-btn" onclick="copy(this, 'curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash')">Copy</button>
