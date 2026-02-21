@@ -254,12 +254,15 @@ async function scanGateway({ showAll = false } = {}) {
 
   const found = dedup(services.filter(Boolean));
   if (found.length === 0) return null;
-  const isp = await getISPName();
-  const name = isp ? `${isp} Modem` : 'Gateway';
-  // Label gateway services as "Admin Page" instead of "Port 443" etc.
+  // Use the first real page title as device name (e.g. "UniFi OS"),
+  // fall back to ISP name + Modem, then just "Gateway"
+  const realTitle = found.find(s => !s.title.startsWith('Port '))?.title;
+  // Label generic fallback titles as "Admin Page"
   for (const s of found) {
     if (s.title.startsWith('Port ')) s.title = 'Admin Page';
   }
+  const isp = await getISPName();
+  const name = realTitle || (isp ? `${isp} Modem` : 'Gateway');
   return { name, ip, services: found };
 }
 

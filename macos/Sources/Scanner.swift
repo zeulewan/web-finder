@@ -177,6 +177,9 @@ enum Scanner {
         var services = await fetchServices(host: ip, ports: openPorts, hints: [:], showAll: true)
         guard !services.isEmpty else { return nil }
 
+        // Use the first real page title as device name (e.g. "UniFi OS"),
+        // fall back to ISP name + Modem, then just "Gateway"
+        let realTitle = services.first(where: { !$0.title.hasPrefix("Port ") })?.title
         // Label generic "Port N" titles as "Admin Page"
         services = services.map { svc in
             svc.title.hasPrefix("Port ") ?
@@ -184,7 +187,10 @@ enum Scanner {
         }
 
         let isp = await ispName
-        let name = isp != nil ? "\(isp!) Modem" : "Gateway"
+        let name: String
+        if let realTitle { name = realTitle }
+        else if let isp { name = "\(isp) Modem" }
+        else { name = "Gateway" }
         return Device(name: name, ip: ip, isLocal: false, isGateway: true, os: nil,
                       online: true, services: services)
     }
