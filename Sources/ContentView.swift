@@ -32,6 +32,7 @@ class ScannerModel: ObservableObject {
 struct ContentView: View {
     @EnvironmentObject private var model: ScannerModel
     @State private var showSettings = false
+    @State private var showInactive = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -117,6 +118,14 @@ struct ContentView: View {
 
     // MARK: Content
 
+    var activeDevices: [Device] {
+        model.devices.filter { $0.online && !$0.services.isEmpty }
+    }
+
+    var inactiveDevices: [Device] {
+        model.devices.filter { !$0.online || $0.services.isEmpty }
+    }
+
     var scrollContent: some View {
         ScrollView {
             if model.devices.isEmpty && !model.scanning {
@@ -126,11 +135,34 @@ struct ContentView: View {
                     .padding(16)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(model.devices) { device in
+                    ForEach(activeDevices) { device in
                         DeviceSection(device: device)
-                        if device.id != model.devices.last?.id {
-                            Divider().padding(.horizontal, 10)
+                        Divider().padding(.horizontal, 10)
+                    }
+
+                    if !inactiveDevices.isEmpty {
+                        if showInactive {
+                            ForEach(inactiveDevices) { device in
+                                DeviceSection(device: device)
+                                if device.id != inactiveDevices.last?.id {
+                                    Divider().padding(.horizontal, 10)
+                                }
+                            }
                         }
+
+                        HoverButton {
+                            withAnimation(.easeInOut(duration: 0.15)) { showInactive.toggle() }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: showInactive ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 9))
+                                Text(showInactive ? "Hide" : "\(inactiveDevices.count) more")
+                                    .font(.system(size: 11))
+                            }
+                            .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
                     }
                 }
                 .padding(.vertical, 4)
