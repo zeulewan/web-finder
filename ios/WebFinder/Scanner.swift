@@ -22,6 +22,7 @@ struct Device: Identifiable {
 
     var sfIcon: String {
         if isLocal { return "iphone" }
+        if name == "Gateway" { return "wifi.router" }
         switch os?.lowercased() {
         case "linux":   return "server.rack"
         case "darwin":  return "laptopcomputer"
@@ -63,6 +64,8 @@ enum Scanner {
     // MARK: - Top-level scan
 
     static func scanAll(showAll: Bool = false) async -> (devices: [Device], error: String?) {
+        // Start gateway scan in parallel with Tailscale API call
+        async let gatewayResult = scanGateway(showAll: showAll)
         let (status, apiError) = await tailscaleStatus()
 
         guard let status else {
@@ -130,6 +133,8 @@ enum Scanner {
             for await d in group { results.append(d) }
             return results
         }
+
+        if let gw = await gatewayResult { devices.append(gw) }
 
         devices.sort {
             let lhs = $0.services.isEmpty ? 1 : 0
@@ -205,11 +210,67 @@ enum Scanner {
         }
     }
 
+    // MARK: - Gateway
+
+    static func scanGateway(showAll: Bool = false) async -> Device? {
+        guard let ip = getDefaultGateway(), !ip.isEmpty else { return nil }
+
+        let gatewayPorts = [80, 443, 8080, 8443]
+        let openPorts = await tcpScanPorts(host: ip, ports: gatewayPorts)
+        guard !openPorts.isEmpty else { return nil }
+
+        let services = await fetchServices(host: ip, ports: openPorts, hints: [:], showAll: true)
+        guard !services.isEmpty else { return nil }
+
+        return Device(name: "Gateway", ip: ip, isLocal: false, os: nil,
+                      online: true, services: services)
+    }
+
+    private static func getDefaultGateway() -> String? {
+        // Get our local IP by connecting a UDP socket to a public address,
+        // then infer gateway as .1 on the same subnet (works for typical home networks)
+        let fd = socket(AF_INET, SOCK_DGRAM, 0)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+
+        var addr = sockaddr_in()
+        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = CFSwapInt16HostToBig(53)
+        inet_pton(AF_INET, "8.8.8.8", &addr.sin_addr)
+
+        let result = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                Darwin.connect(fd, sa, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard result == 0 else { return nil }
+
+        var localAddr = sockaddr_in()
+        var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let gsResult = withUnsafeMutablePointer(to: &localAddr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                getsockname(fd, sa, &addrLen)
+            }
+        }
+        guard gsResult == 0 else { return nil }
+
+        // Set last octet to 1 for gateway
+        var gwAddr = localAddr.sin_addr
+        var raw = gwAddr.s_addr.bigEndian
+        raw = (raw & 0xFFFFFF00) | 1
+        gwAddr.s_addr = raw.bigEndian
+
+        var buf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+        inet_ntop(AF_INET, &gwAddr, &buf, socklen_t(INET_ADDRSTRLEN))
+        return String(cString: buf)
+    }
+
     // MARK: - Port scanning
 
-    static func tcpScanPorts(host: String) async -> [Int] {
+    static func tcpScanPorts(host: String, ports portsToScan: [Int]? = nil) async -> [Int] {
         await withTaskGroup(of: (Int, Bool).self) { group in
-            for port in ports {
+            for port in (portsToScan ?? ports) {
                 group.addTask { (port, await tcpCheck(host: host, port: port)) }
             }
             var open: [Int] = []
