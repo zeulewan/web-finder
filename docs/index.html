@@ -485,6 +485,21 @@
       align-items: flex-start;
     }
 
+    .phone-frame-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .phone-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-faint);
+    }
+
     .phone-frame {
       width: 220px;
       flex-shrink: 0;
@@ -677,16 +692,25 @@
 
   <div class="ios-showcase">
     <div class="phone-gallery">
-      <div class="phone-frame">
-        <img src="ios-dark.png" alt="Web Finder iOS dark mode showing discovered devices">
+      <div class="phone-frame-wrap">
+        <div class="phone-label">Setup</div>
+        <div class="phone-frame">
+          <img src="ios-setup.png" alt="Web Finder iOS setup screen for Tailscale OAuth">
+        </div>
       </div>
-      <div class="phone-frame">
-        <img src="ios-setup.png" alt="Web Finder iOS setup screen for Tailscale OAuth">
+      <div class="phone-frame-wrap">
+        <div class="phone-label">Demo</div>
+        <div class="phone-frame">
+          <video autoplay muted loop playsinline>
+            <source src="ios-demo.mp4" type="video/mp4">
+          </video>
+        </div>
       </div>
-      <div class="phone-frame">
-        <video autoplay muted loop playsinline>
-          <source src="ios-demo.mp4" type="video/mp4">
-        </video>
+      <div class="phone-frame-wrap">
+        <div class="phone-label">Scanning</div>
+        <div class="phone-frame">
+          <img src="ios-dark.png" alt="Web Finder iOS dark mode showing discovered devices">
+        </div>
       </div>
     </div>
 
