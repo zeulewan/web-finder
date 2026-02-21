@@ -7,12 +7,19 @@ class ScannerModel: ObservableObject {
     @Published var devices: [Device] = []
     @Published var scanning = false
     @Published var lastScan: Date?
+    @Published var showAllPorts = false {
+        didSet { UserDefaults.standard.set(showAllPorts, forKey: "showAllPorts") }
+    }
+
+    init() {
+        showAllPorts = UserDefaults.standard.bool(forKey: "showAllPorts")
+    }
 
     func scan() {
         guard !scanning else { return }
         scanning = true
         Task {
-            let result = await Scanner.scanAll()
+            let result = await Scanner.scanAll(showAll: showAllPorts)
             self.devices = result
             self.lastScan = Date()
             self.scanning = false
@@ -24,21 +31,24 @@ class ScannerModel: ObservableObject {
 
 struct ContentView: View {
     @EnvironmentObject private var model: ScannerModel
+    @State private var showSettings = false
 
     var body: some View {
         VStack(spacing: 0) {
             headerBar
             Divider()
-            scrollContent
+            if showSettings {
+                settingsView
+            } else {
+                scrollContent
+            }
             Divider()
             footerBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
-            // Re-scan each time the popover opens (if not already scanning)
             model.scan()
         }
-        // Auto-refresh every 60s while popup is open
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
             model.scan()
         }
@@ -51,21 +61,58 @@ struct ContentView: View {
             Text("Web Finder")
                 .font(.system(size: 13, weight: .semibold))
             Spacer()
+            HoverButton {
+                withAnimation(.easeInOut(duration: 0.15)) { showSettings.toggle() }
+            } label: {
+                Image(systemName: showSettings ? "xmark" : "gearshape")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
             if model.scanning {
                 ProgressView()
                     .controlSize(.small)
                     .scaleEffect(0.7)
             } else {
-                Button { model.scan() } label: {
+                HoverButton {
+                    model.scan()
+                } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 12))
+                        .foregroundColor(.secondary)
                 }
-                .buttonStyle(.plain)
-                .foregroundColor(.secondary)
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    // MARK: Settings
+
+    var settingsView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Settings")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            Toggle(isOn: $model.showAllPorts) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show all open ports")
+                        .font(.system(size: 12))
+                    Text("Include non-web services like AirPlay, SSH")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .onChange(of: model.showAllPorts) { _ in
+                model.scan()
+            }
+
+            Spacer()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Content
@@ -96,10 +143,13 @@ struct ContentView: View {
 
     var footerBar: some View {
         HStack {
-            Button("Quit") { NSApp.terminate(nil) }
-                .buttonStyle(.plain)
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
+            HoverButton {
+                NSApp.terminate(nil)
+            } label: {
+                Text("Quit")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
             Spacer()
             if let ts = model.lastScan {
                 Text(ts, style: .time)
@@ -218,5 +268,30 @@ struct ServiceRow: View {
                 NSWorkspace.shared.open(service.url)
             }
         }
+    }
+}
+
+// MARK: - Hover button
+
+struct HoverButton<Label: View>: View {
+    let action: () -> Void
+    let label: () -> Label
+    @State private var hovered = false
+
+    init(action: @escaping () -> Void, @ViewBuilder label: @escaping () -> Label) {
+        self.action = action
+        self.label = label
+    }
+
+    var body: some View {
+        Button(action: action) {
+            label()
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(hovered ? Color(.selectedControlColor).opacity(0.3) : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
     }
 }

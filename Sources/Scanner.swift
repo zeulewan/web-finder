@@ -73,10 +73,10 @@ enum Scanner {
 
     // MARK: - Top-level scan
 
-    static func scanAll() async -> [Device] {
+    static func scanAll(showAll: Bool = false) async -> [Device] {
         // Run local and Tailscale scans in parallel
-        async let local   = scanLocalDevice()
-        async let remote  = scanTailscaleDevices()
+        async let local   = scanLocalDevice(showAll: showAll)
+        async let remote  = scanTailscaleDevices(showAll: showAll)
 
         var all = [await local] + (await remote)
         // Sort: local first, then has-services before empty, then online before offline, then alphabetical
@@ -93,7 +93,7 @@ enum Scanner {
 
     // MARK: - Local
 
-    static func scanLocalDevice() async -> Device {
+    static func scanLocalDevice(showAll: Bool = false) async -> Device {
         let hostname = ProcessInfo.processInfo.hostName
             .components(separatedBy: ".").first ?? "This Mac"
 
@@ -104,7 +104,7 @@ enum Scanner {
         let ports    = await openPorts
         let projects = await psProjects
 
-        let services = await fetchServices(host: "127.0.0.1", ports: ports, hints: projects, os: "darwin")
+        let services = await fetchServices(host: "127.0.0.1", ports: ports, hints: projects, os: "darwin", showAll: showAll)
         return Device(name: hostname, ip: "127.0.0.1", isLocal: true, os: "darwin",
                       online: true, services: services)
     }
@@ -139,7 +139,7 @@ enum Scanner {
 
     // MARK: - Tailscale
 
-    static func scanTailscaleDevices() async -> [Device] {
+    static func scanTailscaleDevices(showAll: Bool = false) async -> [Device] {
         guard let statusJSON = await tailscaleStatus(),
               let data = statusJSON.data(using: .utf8),
               let obj  = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -177,7 +177,7 @@ enum Scanner {
                                       os: peer.os, online: false, services: [])
                     }
                     let openPorts = await tcpScanPorts(host: peer.ip)
-                    let services  = await fetchServices(host: peer.ip, ports: openPorts, hints: [:], os: peer.os)
+                    let services  = await fetchServices(host: peer.ip, ports: openPorts, hints: [:], os: peer.os, showAll: showAll)
                     return Device(name: peer.name, ip: peer.ip, isLocal: false,
                                   os: peer.os, online: true, services: services)
                 }
@@ -230,7 +230,7 @@ enum Scanner {
 
     // MARK: - HTTP title fetching
 
-    static func fetchServices(host: String, ports: [Int], hints: [Int: String], os: String? = nil) async -> [WebService] {
+    static func fetchServices(host: String, ports: [Int], hints: [Int: String], os: String? = nil, showAll: Bool = false) async -> [WebService] {
         let isDarwin = os?.lowercased() == "darwin"
         let lookup = isDarwin ? knownServices.merging(macOnlyServices) { _, new in new } : knownServices
         return await withTaskGroup(of: WebService?.self) { group in
@@ -242,10 +242,13 @@ enum Scanner {
                         return WebService(title: projectName, port: port, url: url, isHTTPS: false)
                     }
                     if let svc = await fetchTitle(host: host, port: port) { return svc }
-                    // Fallback to known service name, then generic "Port X"
-                    let name = lookup[port] ?? "Port \(port)"
-                    let url = URL(string: "http://\(host):\(port)")!
-                    return WebService(title: name, port: port, url: url, isHTTPS: false)
+                    // Non-web ports: only show with showAll
+                    if showAll {
+                        let name = lookup[port] ?? "Port \(port)"
+                        let url = URL(string: "http://\(host):\(port)")!
+                        return WebService(title: name, port: port, url: url, isHTTPS: false)
+                    }
+                    return nil
                 }
             }
             var services: [WebService] = []

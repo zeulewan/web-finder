@@ -26,13 +26,16 @@ Usage: web-finder [options]
 Options:
   --local, -l       Scan local machine only
   --tailscale, -t   Scan Tailscale peers only
+  --all, -a         Show all open ports (including non-web)
   --json, -j        Output as JSON (for scripts/agents)
   --help, -h        Show this help
 
-With no options, scans both local and Tailscale.
+By default, only shows ports with a web interface.
+Use --all to include non-web ports like AirPlay, SSH, etc.
 
 Examples:
-  web-finder                   # Full scan, human-readable
+  web-finder                   # Full scan, web interfaces only
+  web-finder --all             # Full scan, all open ports
   web-finder --local --json    # Local only, JSON output
   web-finder --tailscale       # Tailscale peers
   web-finder --json            # Everything as JSON
@@ -42,6 +45,7 @@ Examples:
 
 const wantLocal     = args.includes('--local')     || args.includes('-l');
 const wantTailscale = args.includes('--tailscale') || args.includes('-t');
+const showAll       = args.includes('--all')       || args.includes('-a');
 const jsonMode      = args.includes('--json')      || args.includes('-j');
 
 const doLocal     = wantLocal     || (!wantLocal && !wantTailscale);
@@ -59,8 +63,8 @@ async function main() {
   const result = {};
   const tasks  = [];
 
-  if (doLocal)     tasks.push(scanLocal().then(r     => { result.local     = r; }));
-  if (doTailscale) tasks.push(scanTailscale().then(r => { result.tailscale = r; }));
+  if (doLocal)     tasks.push(scanLocal({ showAll }).then(r     => { result.local     = r; }));
+  if (doTailscale) tasks.push(scanTailscale({ showAll }).then(r => { result.tailscale = r; }));
   await Promise.all(tasks);
 
   if (jsonMode) {

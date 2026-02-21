@@ -105,13 +105,14 @@ const MAC_ONLY_SERVICES = {
 };
 
 /** Try http then https (or https first for known HTTPS ports); return { title, url } or null. */
-async function fetchService(host, port, isDarwin = false) {
+async function fetchService(host, port, { isDarwin = false, showAll = false } = {}) {
   const schemes = HTTPS_FIRST_PORTS.has(port) ? ['https', 'http'] : ['http', 'https'];
   for (const scheme of schemes) {
     const url   = `${scheme}://${host}:${port}`;
     const title = await fetchTitle(url);
     if (title) return { title, url };
   }
+  if (!showAll) return null;
   const lookup = isDarwin ? { ...KNOWN_SERVICES, ...MAC_ONLY_SERVICES } : KNOWN_SERVICES;
   return { title: lookup[port] ?? `Port ${port}`, url: `http://${host}:${port}` };
 }
@@ -135,7 +136,7 @@ function decodeEntities(str) {
  * then port-scans and fetches HTTP titles for everything else.
  * Returns: [{ title, host, port, url }]
  */
-async function scanLocal() {
+async function scanLocal({ showAll = false } = {}) {
   // Get pgrep hints: port -> project name
   const hints = {};
   const pgrepOut = await execPromise('pgrep -fl zensical 2>/dev/null');
@@ -158,7 +159,7 @@ async function scanLocal() {
     if (hints[port]) {
       return { title: hints[port], host: '127.0.0.1', port, url: `http://127.0.0.1:${port}` };
     }
-    const svc = await fetchService('127.0.0.1', port, true); // local is always darwin
+    const svc = await fetchService('127.0.0.1', port, { isDarwin: true, showAll });
     if (!svc) return null;
     return { title: svc.title, host: '127.0.0.1', port, url: svc.url };
   }));
@@ -181,7 +182,7 @@ async function getTailscaleStatus() {
  * Scan all online Tailscale peers.
  * Returns: { peers: [{ name, ip, online, services: [{ title, port, url }] }] }
  */
-async function scanTailscale() {
+async function scanTailscale({ showAll = false } = {}) {
   const status = await getTailscaleStatus();
   if (!status) return { error: 'Tailscale not available', peers: [] };
   if (!status.Peer) return { peers: [] };
@@ -201,13 +202,12 @@ async function scanTailscale() {
     const openPorts = await scanPorts(peer.ip);
     const services  = await Promise.all(openPorts.map(async (port) => {
       const isDarwin = (peer.os || '').toLowerCase() === 'darwin';
-      const svc = await fetchService(peer.ip, port, isDarwin);
-      return svc
-        ? { title: svc.title, port, url: svc.url }
-        : { title: `Port ${port}`, port, url: `http://${peer.ip}:${port}` };
+      const svc = await fetchService(peer.ip, port, { isDarwin, showAll });
+      if (!svc) return null;
+      return { title: svc.title, port, url: svc.url };
     }));
 
-    return { ...peer, services };
+    return { ...peer, services: services.filter(Boolean) };
   }));
 
   return { peers: scanned };
