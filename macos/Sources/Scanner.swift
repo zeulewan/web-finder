@@ -33,31 +33,46 @@ struct Device: Identifiable {
 // MARK: - Scanner
 
 enum Scanner {
-    /// Broad set of ports covering dev servers, NAS, Jupyter, Prometheus, etc.
+    /// Broad set of ports covering dev servers, NAS, home automation, media, etc.
     static let ports: [Int] = [
         80, 443,
-        3000, 3001, 3460,
-        4000, 4001,
-        5000, 5001,       // Synology DSM (HTTP/HTTPS)
-        6006,             // TensorBoard
+        1880,             // Node-RED
+        3000, 3001, 3100, 3460,
+        4000, 4001, 4173,
+        5000, 5001, 5050, 5173,  // Synology, pgAdmin, Vite
+        6006, 6052,       // TensorBoard, ESPHome
         7860,             // Gradio
         8000, 8001, 8002, 8003, 8004, 8005,
+        8006,             // Proxmox
         8080, 8081, 8082,
+        8096,             // Jellyfin
+        8123,             // Home Assistant
         8443,
         8888,             // Jupyter
-        9000, 9001,
-        9090,             // Prometheus
+        9000, 9001, 9090, 9093,
         9443,
+        11434,            // Ollama
+        19999,            // Netdata
+        32400,            // Plex
     ]
 
     static let knownServices: [Int: String] = [
-        21:   "FTP",
-        22:   "SSH",
-        25:   "SMTP",
-        53:   "DNS",
-        5353: "mDNS",
-        6006: "TensorBoard",
-        9090: "Prometheus",
+        21:    "FTP",
+        22:    "SSH",
+        25:    "SMTP",
+        53:    "DNS",
+        1880:  "Node-RED",
+        5353:  "mDNS",
+        6006:  "TensorBoard",
+        6052:  "ESPHome",
+        8006:  "Proxmox",
+        8096:  "Jellyfin",
+        8123:  "Home Assistant",
+        9090:  "Prometheus",
+        9093:  "Alertmanager",
+        11434: "Ollama",
+        19999: "Netdata",
+        32400: "Plex",
     ]
 
     // Services only found on macOS
@@ -74,11 +89,13 @@ enum Scanner {
     // MARK: - Top-level scan
 
     static func scanAll(showAll: Bool = false) async -> [Device] {
-        // Run local and Tailscale scans in parallel
+        // Run local, gateway, and Tailscale scans in parallel
         async let local   = scanLocalDevice(showAll: showAll)
+        async let gateway = scanGateway(showAll: showAll)
         async let remote  = scanTailscaleDevices(showAll: showAll)
 
         var all = [await local] + (await remote)
+        if let gw = await gateway { all.append(gw) }
         // Sort: local first, then has-services before empty, then online before offline, then alphabetical
         all.sort {
             if $0.isLocal != $1.isLocal { return $0.isLocal }
@@ -137,6 +154,25 @@ enum Scanner {
         return hints
     }
 
+    // MARK: - Gateway
+
+    static func scanGateway(showAll: Bool = false) async -> Device? {
+        guard let out = await shell("route -n get default 2>/dev/null"),
+              let line = out.components(separatedBy: "\n").first(where: { $0.contains("gateway:") }),
+              let ip = line.components(separatedBy: ":").last?.trimmingCharacters(in: .whitespaces),
+              !ip.isEmpty else { return nil }
+
+        let gatewayPorts = [80, 443, 8080, 8443]
+        let openPorts = await tcpScanPorts(host: ip, ports: gatewayPorts)
+        guard !openPorts.isEmpty else { return nil }
+
+        let services = await fetchServices(host: ip, ports: openPorts, hints: [:], showAll: true)
+        guard !services.isEmpty else { return nil }
+
+        return Device(name: "Gateway", ip: ip, isLocal: false, os: nil,
+                      online: true, services: services)
+    }
+
     // MARK: - Tailscale
 
     static func scanTailscaleDevices(showAll: Bool = false) async -> [Device] {
@@ -190,9 +226,9 @@ enum Scanner {
 
     // MARK: - Port scanning
 
-    static func tcpScanPorts(host: String) async -> [Int] {
+    static func tcpScanPorts(host: String, ports portsToScan: [Int]? = nil) async -> [Int] {
         await withTaskGroup(of: (Int, Bool).self) { group in
-            for port in ports {
+            for port in portsToScan ?? ports {
                 group.addTask { (port, await tcpCheck(host: host, port: port)) }
             }
             var open: [Int] = []

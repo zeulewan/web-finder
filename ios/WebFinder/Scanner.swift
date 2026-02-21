@@ -36,19 +36,26 @@ struct Device: Identifiable {
 enum Scanner {
     static let ports: [Int] = [
         80, 443,
-        3000, 3001, 3460,
-        4000, 4001,
-        5000, 5001,
-        6006, 7860,
+        1880,
+        3000, 3001, 3100, 3460,
+        4000, 4001, 4173,
+        5000, 5001, 5050, 5173,
+        6006, 6052, 7860,
         8000, 8001, 8002, 8003, 8004, 8005,
+        8006,
         8080, 8081, 8082,
-        8443, 8888,
-        9000, 9001, 9090, 9443,
+        8096, 8123, 8443, 8888,
+        9000, 9001, 9090, 9093, 9443,
+        11434, 19999, 32400,
     ]
 
     static let knownServices: [Int: String] = [
         21: "FTP", 22: "SSH", 25: "SMTP", 53: "DNS",
-        5353: "mDNS", 6006: "TensorBoard", 9090: "Prometheus",
+        1880: "Node-RED",
+        5353: "mDNS", 6006: "TensorBoard", 6052: "ESPHome",
+        8006: "Proxmox", 8096: "Jellyfin", 8123: "Home Assistant",
+        9090: "Prometheus", 9093: "Alertmanager",
+        11434: "Ollama", 19999: "Netdata", 32400: "Plex",
     ]
 
     static let macOnlyServices: [Int: String] = [5000: "AirPlay"]

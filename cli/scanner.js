@@ -8,18 +8,25 @@ const https = require('https');
 
 const SCAN_PORTS = [
   80, 443,
-  3000, 3001, 3460,
-  4000, 4001,
-  5000, 5001,       // Synology DSM
-  6006,             // TensorBoard
+  1880,             // Node-RED
+  3000, 3001, 3100, 3460,
+  4000, 4001, 4173,
+  5000, 5001, 5050, 5173, // Synology, pgAdmin, Vite
+  6006, 6052,       // TensorBoard, ESPHome
   7860,             // Gradio
   8000, 8001, 8002, 8003, 8004, 8005,
+  8006,             // Proxmox
   8080, 8081, 8082,
+  8096,             // Jellyfin
+  8123,             // Home Assistant
   8443,
   8888,             // Jupyter
   9000, 9001,
-  9090,             // Prometheus
+  9090, 9093,       // Prometheus, Alertmanager
   9443,
+  11434,            // Ollama
+  19999,            // Netdata
+  32400,            // Plex
 ];
 const PORT_TIMEOUT  = 600;
 const HTTP_TIMEOUT  = 1000;
@@ -91,13 +98,22 @@ function fetchTitle(urlStr) {
 const HTTPS_FIRST_PORTS = new Set([443, 8443, 9443]);
 
 const KNOWN_SERVICES = {
-  21:   'FTP',
-  22:   'SSH',
-  25:   'SMTP',
-  53:   'DNS',
-  5353: 'mDNS',
-  6006: 'TensorBoard',
-  9090: 'Prometheus',
+  21:    'FTP',
+  22:    'SSH',
+  25:    'SMTP',
+  53:    'DNS',
+  1880:  'Node-RED',
+  5353:  'mDNS',
+  6006:  'TensorBoard',
+  6052:  'ESPHome',
+  8006:  'Proxmox',
+  8096:  'Jellyfin',
+  8123:  'Home Assistant',
+  9090:  'Prometheus',
+  9093:  'Alertmanager',
+  11434: 'Ollama',
+  19999: 'Netdata',
+  32400: 'Plex',
 };
 
 const MAC_ONLY_SERVICES = {
@@ -168,6 +184,39 @@ async function scanLocal({ showAll = false } = {}) {
   return services.filter(Boolean);
 }
 
+// ---- gateway scan -----------------------------------------------------------
+
+async function scanGateway({ showAll = false } = {}) {
+  const routeOut = process.platform === 'darwin'
+    ? await execPromise('route -n get default 2>/dev/null')
+    : await execPromise('ip route show default 2>/dev/null');
+  if (!routeOut) return null;
+
+  let ip;
+  if (process.platform === 'darwin') {
+    const m = routeOut.match(/gateway:\s*([\d.]+)/);
+    ip = m ? m[1] : null;
+  } else {
+    const m = routeOut.match(/via\s+([\d.]+)/);
+    ip = m ? m[1] : null;
+  }
+  if (!ip) return null;
+
+  const gatewayPorts = [80, 443, 8080, 8443];
+  const openPorts = await scanPorts(ip, gatewayPorts);
+  if (openPorts.length === 0) return null;
+
+  const services = await Promise.all(openPorts.map(async (port) => {
+    const svc = await fetchService(ip, port, { showAll: true });
+    if (!svc) return null;
+    return { title: svc.title, host: ip, port, url: svc.url };
+  }));
+
+  const found = services.filter(Boolean);
+  if (found.length === 0) return null;
+  return { name: 'Gateway', ip, services: found };
+}
+
 // ---- Tailscale scan ---------------------------------------------------------
 
 async function getTailscaleStatus() {
@@ -214,4 +263,4 @@ async function scanTailscale({ showAll = false } = {}) {
   return { peers: scanned };
 }
 
-module.exports = { scanLocal, scanTailscale, scanPorts, checkPort, SCAN_PORTS };
+module.exports = { scanLocal, scanTailscale, scanGateway, scanPorts, checkPort, SCAN_PORTS };

@@ -15,7 +15,7 @@ const fs   = require('fs');
 
 // Resolve symlinks so scanner.js is found even when binary is symlinked to /usr/local/bin
 const realBin = fs.realpathSync(__filename);
-const { scanLocal, scanTailscale } = require(path.join(path.dirname(realBin), '..', 'scanner.js'));
+const { scanLocal, scanTailscale, scanGateway } = require(path.join(path.dirname(realBin), '..', 'scanner.js'));
 
 const args = process.argv.slice(2);
 
@@ -64,6 +64,7 @@ async function main() {
   const tasks  = [];
 
   if (doLocal)     tasks.push(scanLocal({ showAll }).then(r     => { result.local     = r; }));
+  if (doLocal)     tasks.push(scanGateway({ showAll }).then(r  => { result.gateway   = r; }));
   if (doTailscale) tasks.push(scanTailscale({ showAll }).then(r => { result.tailscale = r; }));
   await Promise.all(tasks);
 
@@ -80,6 +81,13 @@ async function main() {
       for (const s of result.local) {
         console.log(`  \u25CF  ${pad(s.title, 28)} ${s.url}`);
       }
+    }
+  }
+
+  if (result.gateway) {
+    console.log('\nGateway:');
+    for (const s of result.gateway.services) {
+      console.log(`  \u25CF  ${pad(s.title, 28)} ${s.url}`);
     }
   }
 
