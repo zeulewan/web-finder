@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - Web Finder</title>
+  <style>
+    body {
+      background: #080c14;
+      color: #e2e8f0;
+      font-family: -apple-system, system-ui, sans-serif;
+      line-height: 1.7;
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 60px 24px;
+    }
+    h1 { font-size: 28px; margin-bottom: 8px; }
+    h2 { font-size: 18px; margin-top: 32px; margin-bottom: 8px; color: #22d3ee; }
+    p, li { color: #94a3b8; font-size: 15px; }
+    a { color: #22d3ee; text-decoration: none; }
+    a:hover { color: #2dd4bf; }
+    ul { padding-left: 20px; }
+    li { margin-bottom: 6px; }
+    .back { display: inline-block; margin-bottom: 32px; font-size: 13px; color: #64748b; }
+    .updated { margin-top: 40px; font-size: 13px; color: #64748b; }
+  </style>
+</head>
+<body>
+  <a class="back" href="/">&larr; Back to Web Finder</a>
+  <h1>Privacy Policy</h1>
+  <p><strong>Web Finder</strong> does not collect, store, or transmit any personal data.</p>
+
+  <h2>What the app does</h2>
+  <ul>
+    <li>Connects to the Tailscale API using OAuth credentials you provide to discover devices on your tailnet</li>
+    <li>Scans discovered devices for open web ports over your local/Tailscale network</li>
+    <li>Opens URLs in your default browser when you tap a service</li>
+  </ul>
+
+  <h2>Data storage</h2>
+  <ul>
+    <li>Your Tailscale OAuth Client ID and Client Secret are stored locally on your device</li>
+    <li>No data is sent to any third-party server, analytics service, or tracking platform</li>
+    <li>No usage data, crash reports, or telemetry of any kind is collected</li>
+  </ul>
+
+  <h2>Network access</h2>
+  <ul>
+    <li>The app connects to <code>api.tailscale.com</code> to authenticate with Tailscale and retrieve your device list</li>
+    <li>The app makes direct TCP connections to your Tailscale peers to scan for open ports and fetch web page titles</li>
+    <li>No other network connections are made</li>
+  </ul>
+
+  <h2>Third-party services</h2>
+  <p>The app uses the Tailscale API solely to discover your devices. Tailscale's own privacy policy applies to their service: <a href="https://tailscale.com/privacy-policy">tailscale.com/privacy-policy</a></p>
+
+  <h2>Contact</h2>
+  <p>If you have questions, open an issue at <a href="https://github.com/zeulewan/web-finder/issues">github.com/zeulewan/web-finder/issues</a></p>
+
+  <p class="updated">Last updated: February 20, 2026</p>
+</body>
+</html>
