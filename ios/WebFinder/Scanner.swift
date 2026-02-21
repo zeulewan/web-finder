@@ -79,7 +79,7 @@ enum Scanner {
         let myHostname = ProcessInfo.processInfo.hostName
             .components(separatedBy: ".").first?.lowercased() ?? ""
 
-        struct PeerInfo { let name: String; let ip: String; let online: Bool; let os: String? }
+        struct PeerInfo { let name: String; let ip: String; let dnsName: String; let online: Bool; let os: String? }
 
         let now = Date()
         let isoFormatter = ISO8601DateFormatter()
@@ -92,7 +92,10 @@ enum Scanner {
                   let ip = addresses.first else { return nil }
 
             let hostname = device["hostname"] as? String ?? ""
-            let fqdn = (device["name"] as? String)?.components(separatedBy: ".").first ?? ""
+            // Full MagicDNS name for HTTPS URLs (strip trailing dot)
+            let rawDNS = ((device["name"] as? String) ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            let dnsName = rawDNS.isEmpty ? ip : rawDNS
+            let fqdn = rawDNS.components(separatedBy: ".").first ?? ""
             let name = hostname.isEmpty ? (fqdn.isEmpty ? ip : fqdn) : hostname
 
             // Skip this device
@@ -106,19 +109,20 @@ enum Scanner {
                 online = now.timeIntervalSince(lastSeen) < 300
             }
 
-            return PeerInfo(name: name, ip: ip, online: online, os: os)
+            return PeerInfo(name: name, ip: ip, dnsName: dnsName, online: online, os: os)
         }
 
         var devices = await withTaskGroup(of: Device.self) { group in
             for peer in peers {
                 group.addTask {
                     guard peer.online else {
-                        return Device(name: peer.name, ip: peer.ip, isLocal: false,
+                        return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
                                       os: peer.os, online: false, services: [])
                     }
+                    // Scan using IP (fast), build URLs with MagicDNS name (valid HTTPS certs)
                     let openPorts = await tcpScanPorts(host: peer.ip)
-                    let services = await fetchServices(host: peer.ip, ports: openPorts, hints: [:], os: peer.os, showAll: showAll)
-                    return Device(name: peer.name, ip: peer.ip, isLocal: false,
+                    let services = await fetchServices(host: peer.dnsName, ports: openPorts, hints: [:], os: peer.os, showAll: showAll)
+                    return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
                                   os: peer.os, online: true, services: services)
                 }
             }
@@ -256,8 +260,9 @@ enum Scanner {
                     if let svc = await fetchTitle(host: host, port: port) { return svc }
                     guard showAll else { return nil }
                     let name = lookup[port] ?? "Port \(port)"
-                    let url = URL(string: "http://\(host):\(port)")!
-                    return WebService(title: name, port: port, url: url, isHTTPS: false)
+                    let scheme = httpsFirstPorts.contains(port) ? "https" : "http"
+                    let url = URL(string: "\(scheme)://\(host):\(port)")!
+                    return WebService(title: name, port: port, url: url, isHTTPS: httpsFirstPorts.contains(port))
                 }
             }
             var services: [WebService] = []
@@ -274,7 +279,7 @@ enum Scanner {
         }
     }
 
-    static let httpsFirstPorts: Set<Int> = [443, 8443, 9443]
+    static let httpsFirstPorts: Set<Int> = [443, 3460, 8443, 9443]
 
     enum FetchResult {
         case found(String, URL)

@@ -183,16 +183,20 @@ enum Scanner {
             return []
         }
 
-        struct PeerInfo { let name: String; let ip: String; let online: Bool; let os: String? }
+        struct PeerInfo { let name: String; let ip: String; let dnsName: String; let online: Bool; let os: String? }
 
         let peers: [PeerInfo] = peersData.compactMap { _, v in
             guard let peer = v as? [String: Any],
                   let ips  = peer["TailscaleIPs"] as? [String],
                   let ip   = ips.first else { return nil }
 
-            // Prefer HostName, but fall back to DNSName if HostName is "localhost" or empty
+            // Full MagicDNS name for HTTPS URLs (strip trailing dot)
+            let rawDNS = (peer["DNSName"] as? String ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            let dnsName = rawDNS.isEmpty ? ip : rawDNS
+
+            // Short display name
             let hostName = peer["HostName"] as? String ?? ""
-            let dnsFirst = (peer["DNSName"] as? String)?.components(separatedBy: ".").first ?? ""
+            let dnsFirst = rawDNS.components(separatedBy: ".").first ?? ""
             let name: String
             if hostName.isEmpty || hostName.lowercased() == "localhost" {
                 name = dnsFirst.isEmpty ? ip : dnsFirst
@@ -200,7 +204,7 @@ enum Scanner {
                 name = hostName.components(separatedBy: ".").first ?? hostName
             }
 
-            return PeerInfo(name: name, ip: ip,
+            return PeerInfo(name: name, ip: ip, dnsName: dnsName,
                             online: peer["Online"] as? Bool ?? false,
                             os: peer["OS"] as? String)
         }
@@ -209,12 +213,13 @@ enum Scanner {
             for peer in peers {
                 group.addTask {
                     guard peer.online else {
-                        return Device(name: peer.name, ip: peer.ip, isLocal: false,
+                        return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
                                       os: peer.os, online: false, services: [])
                     }
+                    // Scan using IP (fast), but build URLs with MagicDNS name (for valid HTTPS certs)
                     let openPorts = await tcpScanPorts(host: peer.ip)
-                    let services  = await fetchServices(host: peer.ip, ports: openPorts, hints: [:], os: peer.os, showAll: showAll)
-                    return Device(name: peer.name, ip: peer.ip, isLocal: false,
+                    let services  = await fetchServices(host: peer.dnsName, ports: openPorts, hints: [:], os: peer.os, showAll: showAll)
+                    return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
                                   os: peer.os, online: true, services: services)
                 }
             }
@@ -281,8 +286,9 @@ enum Scanner {
                     // No HTML title - only show with showAll
                     guard showAll else { return nil }
                     let name = lookup[port] ?? "Port \(port)"
-                    let url = URL(string: "http://\(host):\(port)")!
-                    return WebService(title: name, port: port, url: url, isHTTPS: false)
+                    let scheme = httpsFirstPorts.contains(port) ? "https" : "http"
+                    let url = URL(string: "\(scheme)://\(host):\(port)")!
+                    return WebService(title: name, port: port, url: url, isHTTPS: httpsFirstPorts.contains(port))
                 }
             }
             var services: [WebService] = []
@@ -300,7 +306,7 @@ enum Scanner {
         }
     }
 
-    static let httpsFirstPorts: Set<Int> = [443, 8443, 9443]
+    static let httpsFirstPorts: Set<Int> = [443, 3460, 8443, 9443]
 
     static func fetchTitle(host: String, port: Int) async -> WebService? {
         let schemes = httpsFirstPorts.contains(port) ? ["https", "http"] : ["http", "https"]

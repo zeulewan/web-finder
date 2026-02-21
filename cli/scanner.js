@@ -66,7 +66,7 @@ async function scanPorts(host, ports = SCAN_PORTS) {
 }
 
 
-const HTTPS_FIRST_PORTS = new Set([443, 8443, 9443]);
+const HTTPS_FIRST_PORTS = new Set([443, 3460, 8443, 9443]);
 
 const KNOWN_SERVICES = {
   21:    'FTP',
@@ -107,7 +107,8 @@ async function fetchService(host, port, { isDarwin = false, showAll = false } = 
   // No HTML title - only show with showAll
   if (!showAll) return null;
   const lookup = isDarwin ? { ...KNOWN_SERVICES, ...MAC_ONLY_SERVICES } : KNOWN_SERVICES;
-  return { title: lookup[port] ?? `Port ${port}`, url: `http://${host}:${port}` };
+  const scheme = HTTPS_FIRST_PORTS.has(port) ? 'https' : 'http';
+  return { title: lookup[port] ?? `Port ${port}`, url: `${scheme}://${host}:${port}` };
 }
 
 /** Fetch URL, detect redirects to different ports on same host. */
@@ -269,19 +270,23 @@ async function scanTailscale({ showAll = false } = {}) {
   const peers = Object.values(status.Peer)
     .map(peer => {
       const hn   = peer.HostName || '';
-      const dn   = (peer.DNSName || '').replace(/\..*$/, '');
+      const rawDNS = (peer.DNSName || '').replace(/\.$/, '');  // strip trailing dot
+      const dnsName = rawDNS || null;
+      const dn   = rawDNS.split('.')[0] || '';
       const name = (!hn || hn.toLowerCase() === 'localhost') ? (dn || 'unknown') : hn.replace(/\..*$/, '');
-      return { name, ip: (peer.TailscaleIPs || [])[0], online: peer.Online || false, os: peer.OS || null };
+      const ip   = (peer.TailscaleIPs || [])[0];
+      return { name, ip, dnsName: dnsName || ip, online: peer.Online || false, os: peer.OS || null };
     })
     .filter(p => p.ip);
 
   const scanned = await Promise.all(peers.map(async (peer) => {
     if (!peer.online) return { ...peer, services: [] };
 
+    // Scan using IP (fast), build URLs with MagicDNS name (valid HTTPS certs)
     const openPorts = await scanPorts(peer.ip);
     const services  = await Promise.all(openPorts.map(async (port) => {
       const isDarwin = (peer.os || '').toLowerCase() === 'darwin';
-      const svc = await fetchService(peer.ip, port, { isDarwin, showAll });
+      const svc = await fetchService(peer.dnsName, port, { isDarwin, showAll });
       if (!svc) return null;
       return { title: svc.title, port, url: svc.url };
     }));
