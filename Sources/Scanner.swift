@@ -255,9 +255,11 @@ enum Scanner {
         }
     }
 
+    static let httpsFirstPorts: Set<Int> = [443, 8443, 9443]
+
     static func fetchTitle(host: String, port: Int) async -> WebService? {
-        // Try HTTP then HTTPS
-        for scheme in ["http", "https"] {
+        let schemes = httpsFirstPorts.contains(port) ? ["https", "http"] : ["http", "https"]
+        for scheme in schemes {
             guard let url = URL(string: "\(scheme)://\(host):\(port)") else { continue }
             if let (title, finalURL) = await httpTitle(url: url) {
                 return WebService(title: title, port: port, url: finalURL, isHTTPS: scheme == "https")
@@ -275,6 +277,8 @@ enum Scanner {
                                  delegateQueue: nil)
         do {
             let (data, response) = try await session.data(from: url)
+            // Skip error responses
+            if let http = response as? HTTPURLResponse, http.statusCode >= 400 { return nil }
             let finalURL = (response as? HTTPURLResponse).flatMap { _ in url } ?? url
 
             guard let html = String(data: data, encoding: .utf8)
