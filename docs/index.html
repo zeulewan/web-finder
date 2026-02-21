@@ -584,11 +584,20 @@
 
     @media (max-width: 480px) {
       .phone-gallery {
-        gap: 8px;
+        gap: 16px;
+        overflow-x: auto;
+        justify-content: flex-start;
+        padding: 0 20px 12px;
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x mandatory;
+      }
+      .phone-frame-wrap {
+        scroll-snap-align: center;
+        flex-shrink: 0;
       }
       .phone-frame {
-        width: 110px;
-        border-radius: 14px;
+        width: 200px;
+        border-radius: 24px;
       }
     }
 
@@ -693,13 +702,13 @@
   <div class="ios-showcase">
     <div class="phone-gallery">
       <div class="phone-frame-wrap">
-        <div class="phone-label">Setup</div>
+        <div class="phone-label">Auth</div>
         <div class="phone-frame">
-          <img src="ios-setup.png" alt="Web Finder iOS setup screen for Tailscale OAuth">
+          <img src="ios-setup.png" alt="Web Finder iOS OAuth setup screen">
         </div>
       </div>
       <div class="phone-frame-wrap">
-        <div class="phone-label">Demo</div>
+        <div class="phone-label">Setup Guide</div>
         <div class="phone-frame">
           <video autoplay muted loop playsinline>
             <source src="ios-demo.mp4" type="video/mp4">
@@ -707,9 +716,9 @@
         </div>
       </div>
       <div class="phone-frame-wrap">
-        <div class="phone-label">Scanning</div>
+        <div class="phone-label">Devices</div>
         <div class="phone-frame">
-          <img src="ios-dark.png" alt="Web Finder iOS dark mode showing discovered devices">
+          <img src="ios-dark.png" alt="Web Finder iOS showing discovered web interfaces">
         </div>
       </div>
     </div>
