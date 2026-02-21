@@ -15,10 +15,9 @@ mkdir -p "$APP/Contents/Resources"
 cp ".build/release/$BINARY" "$APP/Contents/MacOS/"
 cp Info.plist "$APP/Contents/"
 
-# Build icon if source exists
-if [ -f "make_icon.py" ]; then
-    python3 make_icon.py > /dev/null 2>&1
-    iconutil -c icns AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns" 2>/dev/null || true
+# Build icon from iconset or use pre-built .icns
+if [ -d "AppIcon.iconset" ]; then
+    iconutil -c icns AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
 elif [ -f "AppIcon.icns" ]; then
     cp AppIcon.icns "$APP/Contents/Resources/"
 fi
