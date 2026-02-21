@@ -241,7 +241,7 @@ enum Scanner {
                 }
             }
             conn.start(queue: .global())
-            DispatchQueue.global().asyncAfter(deadline: .now() + 0.6) { conn.cancel(); finish(false) }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) { conn.cancel(); finish(false) }
         }
     }
 
@@ -306,8 +306,8 @@ enum Scanner {
 
     static func httpTitle(url: URL) async -> FetchResult {
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 1.0
-        config.timeoutIntervalForResource = 1.5
+        config.timeoutIntervalForRequest = 3.0
+        config.timeoutIntervalForResource = 5.0
         let delegate = RedirectDetectingDelegate()
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         do {
