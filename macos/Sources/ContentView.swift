@@ -223,6 +223,9 @@ struct DeviceSection: View {
                     .foregroundColor(Color(.tertiaryLabelColor))
             }
             Spacer()
+            Text(device.ip)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundColor(Color(.tertiaryLabelColor))
         }
         .padding(.horizontal, 12)
         .padding(.top, 10)

@@ -410,6 +410,11 @@ struct DeviceSection: View {
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
+                Spacer()
+                Text(device.ip)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .textCase(nil)
             }
         }
     }
