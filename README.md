@@ -32,6 +32,12 @@ curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh 
 
 Works on macOS (menubar app + CLI) and Linux (CLI, auto-installs Node.js if missing).
 
+To uninstall:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/uninstall.sh | bash
+```
+
 ## CLI
 
 ```bash
