@@ -112,13 +112,10 @@ async function fetchService(host, port, { isDarwin = false, showAll = false } = 
     const title = await fetchTitle(url);
     if (title) return { title, url };
   }
+  // No HTML title - only show with showAll
+  if (!showAll) return null;
   const lookup = isDarwin ? { ...KNOWN_SERVICES, ...MAC_ONLY_SERVICES } : KNOWN_SERVICES;
-  // Known non-web service - only show with showAll
-  if (lookup[port]) {
-    return showAll ? { title: lookup[port], url: `http://${host}:${port}` } : null;
-  }
-  // Unknown port with no title - show as "Port X" (could be a web interface)
-  return { title: `Port ${port}`, url: `http://${host}:${port}` };
+  return { title: lookup[port] ?? `Port ${port}`, url: `http://${host}:${port}` };
 }
 
 function decodeEntities(str) {
