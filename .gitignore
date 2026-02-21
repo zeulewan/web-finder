@@ -2,4 +2,7 @@ node_modules/
 .DS_Store
 .build/
 *.app/
+ios/build/
+*.zip
+relay.sh
 
