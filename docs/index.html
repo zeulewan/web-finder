@@ -536,12 +536,12 @@
     }
     .phone-device .phone-screen {
       position: absolute;
-      /* bleed slightly under bezel to prevent edge cropping */
-      top: 1.07%;     /* 9/843 */
-      left: 2.89%;    /* 12/415 */
-      width: 94.22%;  /* 391/415 */
-      height: 97.86%; /* 825/843 */
-      border-radius: 13% / 6.5%;
+      /* inset from bezel edge so no content peeks out */
+      top: 1.78%;     /* 15/843 */
+      left: 4.34%;    /* 18/415 */
+      width: 91.33%;  /* 379/415 */
+      height: 96.44%; /* 813/843 */
+      border-radius: 12% / 5.8%;
       overflow: hidden;
     }
     .phone-device .phone-screen img,
@@ -738,7 +738,7 @@
             <div class="phone-label">Walkthrough</div>
             <div class="phone-device">
               <div class="phone-screen">
-                <video autoplay muted loop playsinline>
+                <video class="theme-video" autoplay muted loop playsinline data-dark="ios-demo.mp4" data-light="walkthrough-light.mp4">
                   <source src="ios-demo.mp4" type="video/mp4">
                 </video>
               </div>
@@ -932,6 +932,20 @@
   }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
 
   document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+  // Swap theme-aware videos based on color scheme
+  const mq = window.matchMedia('(prefers-color-scheme: light)');
+  function updateVideos(light) {
+    document.querySelectorAll('.theme-video').forEach(v => {
+      const src = light ? v.dataset.light : v.dataset.dark;
+      if (v.querySelector('source').src !== src) {
+        v.querySelector('source').src = src;
+        v.load();
+      }
+    });
+  }
+  updateVideos(mq.matches);
+  mq.addEventListener('change', e => updateVideos(e.matches));
 </script>
 
 </body>
