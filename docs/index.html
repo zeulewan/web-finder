@@ -10,7 +10,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script defer src="https://cdn.jsdelivr.net/npm/@sneas/telephone@1/iphone-16-max.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -528,16 +527,37 @@
       color: var(--text-faint);
     }
 
-    /* Scale telephone web component (415x843 native) */
+    /* iPhone 16 frame (SVG viewBox: 415x843, screen: 15,12 385x819) */
     .phone-device {
+      position: relative;
       width: 220px;
+      aspect-ratio: 415 / 843;
+      flex-shrink: 0;
     }
-    .phone-device img,
-    .phone-device video {
+    .phone-device .phone-screen {
+      position: absolute;
+      /* screen area percentages from SVG coordinates */
+      top: 1.42%;     /* 12/843 */
+      left: 3.61%;    /* 15/415 */
+      width: 92.77%;  /* 385/415 */
+      height: 97.15%; /* 819/843 */
+      border-radius: 12.5% / 6.1%;
+      overflow: hidden;
+    }
+    .phone-device .phone-screen img,
+    .phone-device .phone-screen video {
       width: 100%;
       height: 100%;
       object-fit: cover;
       display: block;
+    }
+    .phone-device .phone-frame-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 2;
     }
 
     @media (max-width: 720px) {
@@ -700,12 +720,15 @@
     <div class="showcase-item fade-up">
       <div class="showcase-label">iPhone App</div>
       <div class="phone-gallery">
-        <iphone-16-max mode="dark" class="phone-device">
-          <picture>
-            <source srcset="phone-light.png" media="(prefers-color-scheme: light)">
-            <img src="phone-dark.png" alt="Web Finder iOS showing discovered web interfaces">
-          </picture>
-        </iphone-16-max>
+        <div class="phone-device">
+          <div class="phone-screen">
+            <picture>
+              <source srcset="phone-light.png" media="(prefers-color-scheme: light)">
+              <img src="phone-dark.png" alt="Web Finder iOS showing discovered web interfaces">
+            </picture>
+          </div>
+          <img class="phone-frame-svg" src="iphone-frame.svg" alt="">
+        </div>
       </div>
       <details class="setup-dropdown">
         <summary>Setup guide</summary>
@@ -713,20 +736,26 @@
         <div class="phone-gallery" style="margin-top: 20px;">
           <div class="phone-frame-wrap">
             <div class="phone-label">Walkthrough</div>
-            <iphone-16-max mode="dark" class="phone-device">
-              <video autoplay muted loop playsinline>
-                <source src="ios-demo.mp4" type="video/mp4">
-              </video>
-            </iphone-16-max>
+            <div class="phone-device">
+              <div class="phone-screen">
+                <video autoplay muted loop playsinline>
+                  <source src="ios-demo.mp4" type="video/mp4">
+                </video>
+              </div>
+              <img class="phone-frame-svg" src="iphone-frame.svg" alt="">
+            </div>
           </div>
           <div class="phone-frame-wrap">
             <div class="phone-label">Auth</div>
-            <iphone-16-max mode="dark" class="phone-device">
-              <picture>
-                <source srcset="auth-light.png" media="(prefers-color-scheme: light)">
-                <img src="auth-dark.png" alt="Web Finder iOS OAuth setup screen">
-              </picture>
-            </iphone-16-max>
+            <div class="phone-device">
+              <div class="phone-screen">
+                <picture>
+                  <source srcset="auth-light.png" media="(prefers-color-scheme: light)">
+                  <img src="auth-dark.png" alt="Web Finder iOS OAuth setup screen">
+                </picture>
+              </div>
+              <img class="phone-frame-svg" src="iphone-frame.svg" alt="">
+            </div>
           </div>
         </div>
       </details>
