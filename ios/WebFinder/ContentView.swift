@@ -6,6 +6,7 @@ import SwiftUI
 class ScannerModel: ObservableObject {
     @Published var devices: [Device] = []
     @Published var scanning = false
+    @Published var scanProgress: Double = 0
     @Published var lastScan: Date?
     @Published var scanError: String?
     @Published var showAllPorts = false {
@@ -13,6 +14,12 @@ class ScannerModel: ObservableObject {
     }
     @Published var showAllDevices = false {
         didSet { UserDefaults.standard.set(showAllDevices, forKey: "showAllDevices") }
+    }
+    @Published var debugMode = false {
+        didSet { UserDefaults.standard.set(debugMode, forKey: "debugMode") }
+    }
+    @Published var minimalMode = true {
+        didSet { UserDefaults.standard.set(minimalMode, forKey: "minimalMode") }
     }
 
     var needsSetup: Bool { scanError == "NO_CREDENTIALS" }
@@ -26,18 +33,66 @@ class ScannerModel: ObservableObject {
     init() {
         showAllPorts = UserDefaults.standard.bool(forKey: "showAllPorts")
         showAllDevices = UserDefaults.standard.bool(forKey: "showAllDevices")
+        debugMode = UserDefaults.standard.bool(forKey: "debugMode")
+        // Default true for new installs (object == nil means never set)
+        if UserDefaults.standard.object(forKey: "minimalMode") == nil {
+            minimalMode = true
+        } else {
+            minimalMode = UserDefaults.standard.bool(forKey: "minimalMode")
+        }
+        // Load cached results for instant display on launch
+        devices = Self.loadCache()
     }
 
     func scan() {
         guard !scanning else { return }
         scanning = true
+        scanProgress = 0
+        devices = []
+        scanError = nil
+        ScanLog.shared.clear()
         Task {
-            let (result, error) = await Scanner.scanAll(showAll: showAllPorts)
+            let (result, error) = await Scanner.scanAll(showAll: showAllPorts, onProgress: { progress in
+                Task { @MainActor in self.scanProgress = progress }
+            }, onDevice: { device in
+                Task { @MainActor in
+                    self.devices.append(device)
+                    self.sortDevices()
+                }
+            })
+            // Final consistent state
             self.devices = result
             self.scanError = error
             self.lastScan = Date()
+            self.scanProgress = 1
             self.scanning = false
+            Self.saveCache(result)
         }
+    }
+
+    private func sortDevices() {
+        devices.sort {
+            let lhs = $0.services.isEmpty ? 1 : 0
+            let rhs = $1.services.isEmpty ? 1 : 0
+            if lhs != rhs { return lhs < rhs }
+            if $0.online != $1.online { return $0.online }
+            return $0.name < $1.name
+        }
+    }
+
+    // MARK: - Cache
+
+    private static let cacheKey = "cachedDevices"
+
+    private static func saveCache(_ devices: [Device]) {
+        guard let data = try? JSONEncoder().encode(devices) else { return }
+        UserDefaults.standard.set(data, forKey: cacheKey)
+    }
+
+    static func loadCache() -> [Device] {
+        guard let data = UserDefaults.standard.data(forKey: cacheKey),
+              let devices = try? JSONDecoder().decode([Device].self, from: data) else { return [] }
+        return devices
     }
 }
 
@@ -59,15 +114,6 @@ struct ContentView: View {
             .navigationTitle("Web Finder")
             .toolbar {
                 if model.isConfigured {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        if model.scanning {
-                            ProgressView()
-                        } else {
-                            Button { model.scan() } label: {
-                                Image(systemName: "arrow.clockwise")
-                            }
-                        }
-                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { showSettings = true } label: {
                             Image(systemName: "gearshape")
@@ -95,6 +141,13 @@ struct ContentView: View {
 
     var deviceList: some View {
         List {
+            if model.scanning {
+                Section {
+                    ProgressView(value: model.scanProgress)
+                        .tint(.accentColor)
+                }
+            }
+
             if let error = model.scanError {
                 Section {
                     VStack(spacing: 8) {
@@ -124,8 +177,12 @@ struct ContentView: View {
             } else {
                 let visible = model.showAllDevices ? model.devices : activeDevices
                 ForEach(visible) { device in
-                    DeviceSection(device: device)
+                    DeviceSection(device: device, minimal: model.minimalMode)
                 }
+            }
+
+            if model.debugMode {
+                DebugLogSection()
             }
         }
         .listStyle(.insetGrouped)
@@ -309,6 +366,15 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle(isOn: $model.minimalMode) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Minimal mode")
+                            Text("Hide port numbers and IP addresses")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
                     Toggle(isOn: $model.showAllPorts) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Show non-web ports")
@@ -329,8 +395,17 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+
+                    Toggle(isOn: $model.debugMode) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Debug mode")
+                            Text("Show scan log at bottom of device list")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 } header: {
-                    Text("Filtering")
+                    Text("Display")
                 }
 
                 if let ts = model.lastScan {
@@ -344,7 +419,7 @@ struct SettingsView: View {
 
                 Section {
                     LabeledContent("Version") {
-                        Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")
+                        Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "\u{2014}")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -383,6 +458,7 @@ struct SettingsView: View {
 
 struct DeviceSection: View {
     let device: Device
+    let minimal: Bool
 
     var body: some View {
         Section {
@@ -394,7 +470,7 @@ struct DeviceSection: View {
                     .foregroundStyle(.tertiary)
             } else {
                 ForEach(device.services) { service in
-                    ServiceRow(service: service)
+                    ServiceRow(service: service, minimal: minimal)
                 }
             }
         } header: {
@@ -411,11 +487,49 @@ struct DeviceSection: View {
                         .foregroundStyle(.tertiary)
                 }
                 Spacer()
-                Text(device.ip)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .textCase(nil)
+                if !minimal {
+                    Text(device.ip)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .textCase(nil)
+                }
             }
+        }
+    }
+}
+
+// MARK: - Debug log
+
+struct DebugLogSection: View {
+    @ObservedObject private var log = ScanLog.shared
+    @State private var copied = false
+
+    var body: some View {
+        Section {
+            if log.entries.isEmpty {
+                Text("No log entries")
+                    .foregroundStyle(.tertiary)
+            } else {
+                Button {
+                    UIPasteboard.general.string = log.entries.joined(separator: "\n")
+                    withAnimation { copied = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        withAnimation { copied = false }
+                    }
+                } label: {
+                    Label(copied ? "Copied!" : "Copy Log",
+                          systemImage: copied ? "checkmark.circle.fill" : "doc.on.doc")
+                        .font(.caption)
+                        .foregroundStyle(copied ? .green : .accentColor)
+                }
+                ForEach(Array(log.entries.reversed().enumerated()), id: \.offset) { _, entry in
+                    Text(entry)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Debug Log")
         }
     }
 }
@@ -424,6 +538,7 @@ struct DeviceSection: View {
 
 struct ServiceRow: View {
     let service: WebService
+    let minimal: Bool
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -440,9 +555,11 @@ struct ServiceRow: View {
 
                 Spacer()
 
-                Text(":\(service.port)")
-                    .font(.footnote.monospaced())
-                    .foregroundColor(.secondary)
+                if !minimal {
+                    Text(":\(service.port)")
+                        .font(.footnote.monospaced())
+                        .foregroundColor(.secondary)
+                }
 
                 Image(systemName: "arrow.up.right.square")
                     .font(.footnote)

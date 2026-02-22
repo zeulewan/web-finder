@@ -3,15 +3,19 @@ import Network
 
 // MARK: - Models
 
-struct WebService: Identifiable {
+struct WebService: Identifiable, Codable {
     let id = UUID()
     let title: String
     let port: Int
     let url: URL
     let isHTTPS: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case title, port, url, isHTTPS
+    }
 }
 
-struct Device: Identifiable {
+struct Device: Identifiable, Codable {
     let id = UUID()
     let name: String
     let ip: String
@@ -21,26 +25,62 @@ struct Device: Identifiable {
     let online: Bool
     var services: [WebService]
 
+    enum CodingKeys: String, CodingKey {
+        case name, ip, isLocal, isGateway, os, online, services
+    }
+
     init(name: String, ip: String, isLocal: Bool, isGateway: Bool = false, os: String?, online: Bool, services: [WebService]) {
         self.name = name; self.ip = ip; self.isLocal = isLocal; self.isGateway = isGateway
         self.os = os; self.online = online; self.services = services
     }
 
+    static func isMacOS(_ os: String?) -> Bool {
+        guard let os = os?.lowercased() else { return false }
+        return os == "darwin" || os == "macos"
+    }
+
     var sfIcon: String {
         if isLocal { return "iphone" }
         if isGateway { return "wifi.router" }
+        if Device.isMacOS(os) { return "laptopcomputer" }
         switch os?.lowercased() {
         case "linux":   return "server.rack"
-        case "darwin":  return "laptopcomputer"
         case "ios":     return "iphone"
         default:        return "desktopcomputer"
         }
     }
 }
 
+// MARK: - Debug log
+
+@MainActor
+class ScanLog: ObservableObject {
+    static let shared = ScanLog()
+    @Published var entries: [String] = []
+    var enabled: Bool { UserDefaults.standard.bool(forKey: "debugMode") }
+
+    func log(_ msg: String) {
+        guard enabled else { return }
+        let ts = String(format: "%.1f", Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 1000))
+        let entry = "[\(ts)] \(msg)"
+        Task { @MainActor in entries.append(entry) }
+    }
+
+    func clear() { entries = [] }
+}
+
+private func dlog(_ msg: String) {
+    Task { @MainActor in ScanLog.shared.log(msg) }
+}
+
 // MARK: - Scanner
 
 enum Scanner {
+    // Concurrency limits to avoid overwhelming the Tailscale VPN tunnel on iOS.
+    // Without these, scanning 10+ peers x 35 ports = 700+ concurrent HTTP connections.
+    private static let maxConcurrentPeers = 3
+    private static let maxConcurrentPorts = 6
+
     static let ports: [Int] = [
         80, 443,
         1880,
@@ -67,12 +107,25 @@ enum Scanner {
 
     static let macOnlyServices: [Int: String] = [5000: "AirPlay"]
 
+    static let httpsFirstPorts: Set<Int> = [443, 3460, 8443, 9443]
+
+    // Single shared URLSession with conservative limits.
+    private static let sharedSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 3.0
+        config.timeoutIntervalForResource = 4.0
+        config.httpMaximumConnectionsPerHost = 2
+        return URLSession(configuration: config, delegate: InsecureTLSDelegate.shared, delegateQueue: nil)
+    }()
+
     // MARK: - Top-level scan
 
-    static func scanAll(showAll: Bool = false) async -> (devices: [Device], error: String?) {
-        // Start gateway scan in parallel with Tailscale API call
-        async let gatewayResult = scanGateway(showAll: showAll)
+    static func scanAll(showAll: Bool = false, onProgress: (@Sendable (Double) -> Void)? = nil, onDevice: (@Sendable (Device) -> Void)? = nil) async -> (devices: [Device], error: String?) {
+        dlog("scanAll started")
+        async let gatewayResult = scanGateway()
+        dlog("calling tailscaleStatus")
         let (status, apiError) = await tailscaleStatus()
+        dlog("tailscaleStatus done: \(status != nil ? "ok" : "nil"), error: \(apiError ?? "none")")
 
         guard let status else {
             return ([], apiError)
@@ -84,7 +137,6 @@ enum Scanner {
             return ([], "Tailscale returned unexpected data")
         }
 
-        // Get this device's hostname so we can skip ourselves
         let myHostname = ProcessInfo.processInfo.hostName
             .components(separatedBy: ".").first?.lowercased() ?? ""
 
@@ -96,21 +148,20 @@ enum Scanner {
         let isoFallback = ISO8601DateFormatter()
         isoFallback.formatOptions = [.withInternetDateTime]
 
+        dlog("parsed \(devicesArray.count) devices from API")
+
         let peers: [PeerInfo] = devicesArray.compactMap { device in
             guard let addresses = device["addresses"] as? [String],
                   let ip = addresses.first else { return nil }
 
             let hostname = device["hostname"] as? String ?? ""
-            // Full MagicDNS name for HTTPS URLs (strip trailing dot)
             let rawDNS = ((device["name"] as? String) ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "."))
             let dnsName = rawDNS.isEmpty ? ip : rawDNS
             let fqdn = rawDNS.components(separatedBy: ".").first ?? ""
             let name = hostname.isEmpty ? (fqdn.isEmpty ? ip : fqdn) : hostname
 
-            // Skip this device
             if name.lowercased() == myHostname { return nil }
 
-            // Use lastSeen to determine online status (within last 5 minutes = online)
             let os = device["os"] as? String
             var online = false
             if let lastSeenStr = device["lastSeen"] as? String,
@@ -121,26 +172,54 @@ enum Scanner {
             return PeerInfo(name: name, ip: ip, dnsName: dnsName, online: online, os: os)
         }
 
+        let onlinePeers = peers.filter { $0.online }
+        dlog("\(peers.count) peers, \(onlinePeers.count) online, scanning \(maxConcurrentPeers) at a time...")
+
+        // Throttled peer scanning: max N peers at a time to avoid flooding VPN tunnel.
+        let totalPeers = max(peers.count, 1)
         var devices = await withTaskGroup(of: Device.self) { group in
-            for peer in peers {
+            var iterator = peers.makeIterator()
+            var running = 0
+            var results: [Device] = []
+
+            // Helper to add one peer scan to the group
+            func addNext() -> Bool {
+                guard let peer = iterator.next() else { return false }
                 group.addTask {
                     guard peer.online else {
                         return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
                                       os: peer.os, online: false, services: [])
                     }
-                    // Scan using IP (fast), build URLs with MagicDNS name (valid HTTPS certs)
-                    let openPorts = await tcpScanPorts(host: peer.ip)
-                    let services = await fetchServices(host: peer.dnsName, ports: openPorts, hints: [:], os: peer.os, showAll: showAll)
+                    dlog("probing \(peer.name) via \(peer.ip)...")
+                    let services = await httpProbeAllPorts(host: peer.ip, displayHost: peer.dnsName, os: peer.os, showAll: showAll)
                     return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
                                   os: peer.os, online: true, services: services)
                 }
+                return true
             }
-            var results: [Device] = []
-            for await d in group { results.append(d) }
+
+            // Seed initial batch
+            while running < maxConcurrentPeers, addNext() { running += 1 }
+
+            // As each completes, deliver progressively and start the next
+            for await d in group {
+                results.append(d)
+                running -= 1
+                onProgress?(Double(results.count) / Double(totalPeers))
+                onDevice?(d)
+                if addNext() { running += 1 }
+            }
             return results
         }
 
-        if let gw = await gatewayResult { devices.append(gw) }
+        dlog("peer scan done, \(devices.count) devices. waiting for gateway...")
+        if let gw = await gatewayResult {
+            dlog("gateway found: \(gw.name) (\(gw.ip))")
+            devices.append(gw)
+            onDevice?(gw)
+        } else {
+            dlog("no gateway found")
+        }
 
         devices.sort {
             let lhs = $0.services.isEmpty ? 1 : 0
@@ -154,7 +233,6 @@ enum Scanner {
 
     // MARK: - Tailscale OAuth API
 
-    /// Get an OAuth access token using client credentials
     static func getAccessToken(clientID: String, clientSecret: String) async -> String? {
         guard let url = URL(string: "https://api.tailscale.com/api/v2/oauth/token") else { return nil }
         var req = URLRequest(url: url)
@@ -175,7 +253,6 @@ enum Scanner {
         return token
     }
 
-    /// Fetch device list from the Tailscale API using OAuth
     static func tailscaleStatus() async -> (String?, String?) {
         let clientID = UserDefaults.standard.string(forKey: "tsClientID") ?? ""
         let clientSecret = UserDefaults.standard.string(forKey: "tsClientSecret") ?? ""
@@ -218,42 +295,74 @@ enum Scanner {
 
     // MARK: - Gateway
 
-    static func scanGateway(showAll: Bool = false) async -> Device? {
-        guard let baseIP = getDefaultGateway(), !baseIP.isEmpty else { return nil }
-
-        // Try .1 first, then .254 if no ports found
-        let candidates = [baseIP, baseIP.replacingOccurrences(of: #"\.\d+$"#, with: ".254", options: .regularExpression)]
-        var ip = baseIP
-        var openPorts: [Int] = []
-        let gatewayPorts = [80, 443, 8080, 8443]
-        for candidate in candidates {
-            openPorts = await tcpScanPorts(host: candidate, ports: gatewayPorts)
-            if !openPorts.isEmpty { ip = candidate; break }
+    static func scanGateway() async -> Device? {
+        dlog("gateway: detecting IP...")
+        guard let gatewayIP = await getDefaultGateway(), !gatewayIP.isEmpty else {
+            dlog("gateway: no IP found")
+            return nil
         }
+        dlog("gateway: IP = \(gatewayIP)")
+
+        let gatewayPorts = [80, 443, 8080]
+        let openPorts = await tcpScanPorts(host: gatewayIP, ports: gatewayPorts)
+        dlog("gateway: open ports = \(openPorts)")
         guard !openPorts.isEmpty else { return nil }
 
-        let services = await fetchServices(host: ip, ports: openPorts, hints: [:], showAll: false)
+        // Fetch services with showAll, rename generic "Port X" to "Admin Page"
+        let allServices = await fetchServices(host: gatewayIP, ports: openPorts, hints: [:], showAll: true)
+        let services = allServices.map { svc -> WebService in
+            if svc.title.hasPrefix("Port ") {
+                return WebService(title: "Admin Page", port: svc.port, url: svc.url, isHTTPS: svc.isHTTPS)
+            }
+            return svc
+        }
         guard !services.isEmpty else { return nil }
 
+        // Detect UniFi hardware model, then ISP, then fall back to Gateway.
+        // ISP comes before page title because our "Admin Page" rename isn't a real name.
+        let model = await detectUnifiModel(host: gatewayIP)
         let name: String
-        if let title = services.first?.title {
-            name = title
-        } else if let isp = await getISPName() {
-            name = "\(isp) Modem"
-        } else {
-            name = "Gateway"
+        if let model { name = model }
+        else if let isp = await getISPName() { name = "\(isp) Modem" }
+        else {
+            let realTitle = services.first(where: { $0.title != "Admin Page" })?.title
+            name = realTitle ?? "Gateway"
         }
-        return Device(name: name, ip: ip, isLocal: false, isGateway: true, os: nil,
-                      online: true, services: services)
+
+        // For UniFi devices, only keep port 443 (main web UI).
+        // Port 80 redirects to 443, 8080 is device inform, 8443 is legacy controller API.
+        let filtered = model != nil ? services.filter { $0.port == 443 } : services
+        let finalServices = filtered.isEmpty ? services : filtered
+
+        return Device(name: name, ip: gatewayIP, isLocal: false, isGateway: true, os: nil,
+                      online: true, services: finalServices)
+    }
+
+    /// Detect UniFi hardware model from UNIFI_OS_MANIFEST in the gateway page.
+    static func detectUnifiModel(host: String) async -> String? {
+        guard let url = URL(string: "https://\(host)") else { return nil }
+        do {
+            let (data, response) = try await sharedSession.data(from: url)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            guard let html = String(data: data, encoding: .utf8) else { return nil }
+            guard let start = html.range(of: "UNIFI_OS_MANIFEST") else { return nil }
+            let after = html[start.upperBound...]
+            guard let braceStart = after.firstIndex(of: "{"),
+                  let scriptEnd = after.range(of: "</script>") else { return nil }
+            let jsonStr = String(after[braceStart..<scriptEnd.lowerBound]).trimmingCharacters(in: .whitespaces)
+            guard let jsonData = jsonStr.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                  let modelObj = obj["model"] as? [String: Any] else { return nil }
+            return (modelObj["shortName"] as? String) ?? (modelObj["longName"] as? String)
+        } catch {
+            return nil
+        }
     }
 
     static func getISPName() async -> String? {
         guard let url = URL(string: "https://ipinfo.io/json") else { return nil }
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 3.0
-        let session = URLSession(configuration: config)
         do {
-            let (data, _) = try await session.data(from: url)
+            let (data, _) = try await sharedSession.data(from: url)
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let org = json["org"] as? String, !org.isEmpty else { return nil }
             return org.replacingOccurrences(of: #"^AS\d+\s+"#, with: "", options: .regularExpression)
@@ -262,37 +371,93 @@ enum Scanner {
         }
     }
 
-    private static func getDefaultGateway() -> String? {
-        // Use getifaddrs to find the WiFi interface IP (en0), then infer .1 gateway.
-        // This avoids the UDP socket trick which can route through Tailscale.
+    /// Find gateway IP using NWPathMonitor (WiFi-specific, bypasses Tailscale VPN)
+    private static func getDefaultGateway() async -> String? {
+        dlog("gateway: trying NWPathMonitor...")
+        if let gw = await getGatewayViaPathMonitor() {
+            dlog("gateway: NWPathMonitor found \(gw)")
+            return gw
+        }
+        dlog("gateway: NWPathMonitor failed, trying getifaddrs...")
+        if let gw = getGatewayFromInterfaces() {
+            dlog("gateway: getifaddrs found \(gw)")
+            return gw
+        }
+        dlog("gateway: all methods failed")
+        return nil
+    }
+
+    private static func getGatewayViaPathMonitor() async -> String? {
+        await withCheckedContinuation { continuation in
+            let lock = NSLock()
+            var done = false
+            let finish: (String?) -> Void = { result in
+                lock.lock(); let first = !done; done = true; lock.unlock()
+                if first { continuation.resume(returning: result) }
+            }
+
+            let monitor = NWPathMonitor(requiredInterfaceType: .wifi)
+            monitor.pathUpdateHandler = { path in
+                monitor.cancel()
+                dlog("gateway/monitor: status=\(path.status), gateways=\(path.gateways.count), interfaces=\(path.availableInterfaces.map { $0.name })")
+                guard path.status == .satisfied else { finish(nil); return }
+
+                for gw in path.gateways {
+                    if case .hostPort(let host, _) = gw {
+                        let ip = "\(host)"
+                        dlog("gateway/monitor: gw ip = \(ip)")
+                        if !ip.hasPrefix("100.") && !ip.contains(":") {
+                            finish(ip)
+                            return
+                        }
+                    }
+                }
+                finish(nil)
+            }
+            monitor.start(queue: DispatchQueue(label: "gw-detect"))
+
+            DispatchQueue.global().asyncAfter(deadline: .now() + 2.0) {
+                monitor.cancel()
+                finish(nil)
+            }
+        }
+    }
+
+    /// Fallback: enumerate network interfaces to find a private IPv4, infer gateway as .1
+    private static func getGatewayFromInterfaces() -> String? {
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else { return nil }
         defer { freeifaddrs(ifaddr) }
 
-        var wifiIP: UInt32?
         for ptr in sequence(first: firstAddr, next: { $0.pointee.ifa_next }) {
             let flags = Int32(ptr.pointee.ifa_flags)
             guard flags & IFF_UP != 0, flags & IFF_LOOPBACK == 0 else { continue }
             guard ptr.pointee.ifa_addr.pointee.sa_family == UInt8(AF_INET) else { continue }
-
             let name = String(cString: ptr.pointee.ifa_name)
-            // en0 = WiFi on iOS, skip utun (Tailscale/VPN) and pdp_ip (cellular)
-            guard name == "en0" else { continue }
+            if name.hasPrefix("utun") || name.hasPrefix("ipsec") || name.hasPrefix("lo") { continue }
 
             let addr = ptr.pointee.ifa_addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee }
-            wifiIP = addr.sin_addr.s_addr.bigEndian
-            break
-        }
+            let hostOrder = CFSwapInt32BigToHost(addr.sin_addr.s_addr)
+            let firstOctet = hostOrder >> 24
 
-        guard let ip = wifiIP else { return nil }
-        var gwAddr = in_addr()
-        gwAddr.s_addr = ((ip & 0xFFFFFF00) | 1).bigEndian
-        var buf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
-        inet_ntop(AF_INET, &gwAddr, &buf, socklen_t(INET_ADDRSTRLEN))
-        return String(cString: buf)
+            if firstOctet == 100 && ((hostOrder >> 22) & 0x3) == 1 { continue }
+            if firstOctet == 169 && ((hostOrder >> 16) & 0xFF) == 254 { continue }
+            let isPrivate = firstOctet == 10 ||
+                            (firstOctet == 172 && ((hostOrder >> 16) & 0xFF) >= 16 && ((hostOrder >> 16) & 0xFF) <= 31) ||
+                            (firstOctet == 192 && ((hostOrder >> 16) & 0xFF) == 168)
+            guard isPrivate else { continue }
+
+            let gwHostOrder = (hostOrder & 0xFFFFFF00) | 1
+            var gwAddr = in_addr()
+            gwAddr.s_addr = CFSwapInt32HostToBig(gwHostOrder)
+            var buf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+            inet_ntop(AF_INET, &gwAddr, &buf, socklen_t(INET_ADDRSTRLEN))
+            return String(cString: buf)
+        }
+        return nil
     }
 
-    // MARK: - Port scanning
+    // MARK: - Port scanning (used for gateway only; peers use HTTP probing)
 
     static func tcpScanPorts(host: String, ports portsToScan: [Int]? = nil) async -> [Int] {
         await withTaskGroup(of: (Int, Bool).self) { group in
@@ -332,10 +497,101 @@ enum Scanner {
         }
     }
 
+    // MARK: - HTTP probing (throttled)
+
+    /// Probe all ports via HTTP directly (no TCP scan). Used for Tailscale peers
+    /// because NWConnection doesn't route through the VPN tunnel on iOS.
+    /// Throttled to maxConcurrentPorts at a time per peer.
+    // Ports that are APIs or protocol endpoints, not web UIs.
+    // Only shown when showAllPorts is enabled.
+    static let nonWebPorts: Set<Int> = [11434] // Ollama API
+    static let darwinOnlyNonWebPorts: Set<Int> = [5000] // AirPlay Receiver
+
+    static func httpProbeAllPorts(host: String, displayHost: String? = nil, os: String? = nil, showAll: Bool = false) async -> [WebService] {
+        let shortHost = (displayHost ?? host).components(separatedBy: ".").first ?? host
+
+        // Warm up the VPN tunnel. First connection to a Tailscale peer can take
+        // seconds while WireGuard establishes the tunnel. Use a dedicated session
+        // with a longer timeout so it doesn't get capped by the scan session's limits.
+        let warmupStart = Date()
+        if let warmupURL = URL(string: "https://\(host):443") {
+            let warmupConfig = URLSessionConfiguration.ephemeral
+            warmupConfig.timeoutIntervalForRequest = 5.0
+            warmupConfig.timeoutIntervalForResource = 6.0
+            let warmupSession = URLSession(configuration: warmupConfig, delegate: InsecureTLSDelegate.shared, delegateQueue: nil)
+            var req = URLRequest(url: warmupURL)
+            req.timeoutInterval = 5.0
+            do {
+                let (_, response) = try await warmupSession.data(for: req)
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                dlog("  \(shortHost): warmup ok (HTTP \(code), \(String(format: "%.1f", Date().timeIntervalSince(warmupStart)))s)")
+            } catch {
+                let elapsed = String(format: "%.1f", Date().timeIntervalSince(warmupStart))
+                let nsErr = (error as NSError)
+                dlog("  \(shortHost): warmup failed (\(nsErr.domain) \(nsErr.code), \(elapsed)s)")
+            }
+            warmupSession.invalidateAndCancel()
+        }
+
+        // Ports we want extra diagnostics for when they fail
+        let debugPorts: Set<Int> = [443, 3460, 5001]
+
+        // Throttled port scanning: max N ports probed concurrently
+        return await withTaskGroup(of: WebService?.self) { group in
+            var portIterator = ports.makeIterator()
+            var running = 0
+            var services: [WebService] = []
+
+            func probePort(_ port: Int) {
+                group.addTask {
+                    guard let svc = await fetchTitle(host: host, port: port) else {
+                        if debugPorts.contains(port) {
+                            dlog("  \(shortHost):\(port) -> MISS")
+                        }
+                        return nil
+                    }
+                    dlog("  \(shortHost):\(port) -> \(svc.title)")
+                    if let dh = displayHost, let url = URL(string: "\(svc.isHTTPS ? "https" : "http")://\(dh):\(port)") {
+                        return WebService(title: svc.title, port: port, url: url, isHTTPS: svc.isHTTPS)
+                    }
+                    return svc
+                }
+            }
+
+            // Seed initial batch
+            while running < maxConcurrentPorts, let port = portIterator.next() {
+                probePort(port)
+                running += 1
+            }
+
+            // As each completes, start the next
+            for await s in group {
+                running -= 1
+                if let s { services.append(s) }
+                if let port = portIterator.next() {
+                    probePort(port)
+                    running += 1
+                }
+            }
+
+            dlog("  \(shortHost): \(services.count) services found")
+            var result = dedup(services)
+            if !showAll {
+                let isDarwin = Device.isMacOS(os)
+                result = result.filter { svc in
+                    if nonWebPorts.contains(svc.port) { return false }
+                    if isDarwin && darwinOnlyNonWebPorts.contains(svc.port) { return false }
+                    return true
+                }
+            }
+            return result.sorted { $0.port < $1.port }
+        }
+    }
+
     // MARK: - HTTP title fetching
 
     static func fetchServices(host: String, ports: [Int], hints: [Int: String], os: String? = nil, showAll: Bool = false) async -> [WebService] {
-        let isDarwin = os?.lowercased() == "darwin"
+        let isDarwin = Device.isMacOS(os)
         let lookup = isDarwin ? knownServices.merging(macOnlyServices) { _, new in new } : knownServices
         return await withTaskGroup(of: WebService?.self) { group in
             for port in ports {
@@ -354,64 +610,137 @@ enum Scanner {
             }
             var services: [WebService] = []
             for await s in group { if let s { services.append(s) } }
-            let httpsPairs: [(Int, Int)] = [(80, 443), (8080, 8443)]
-            var skipPorts: Set<Int> = []
-            for (httpPort, httpsPort) in httpsPairs {
-                if services.contains(where: { $0.port == httpPort }),
-                   services.contains(where: { $0.port == httpsPort }) {
-                    skipPorts.insert(httpPort)
-                }
-            }
-            return services.filter { !skipPorts.contains($0.port) }.sorted { $0.port < $1.port }
+            return dedup(services).sorted { $0.port < $1.port }
         }
     }
 
-    static let httpsFirstPorts: Set<Int> = [443, 3460, 8443, 9443]
+    /// Remove duplicate/redirect ports.
+    private static func dedup(_ services: [WebService]) -> [WebService] {
+        // Standard HTTP/HTTPS pairs: remove HTTP variant when HTTPS exists
+        let pairs: [(Int, Int)] = [(80, 443), (5000, 5001), (8080, 8443)]
+        var skip: Set<Int> = []
+        for (httpPort, httpsPort) in pairs {
+            if services.contains(where: { $0.port == httpPort }),
+               services.contains(where: { $0.port == httpsPort }) {
+                skip.insert(httpPort)
+            }
+        }
+        // Remove generic "Port X" entries for common redirect ports (80, 443)
+        // when any service with a real title exists on the same device.
+        let hasRealTitle = services.contains { !$0.title.hasPrefix("Port ") }
+        if hasRealTitle {
+            for svc in services where svc.title.hasPrefix("Port ") {
+                if svc.port == 80 || svc.port == 443 {
+                    skip.insert(svc.port)
+                }
+            }
+        }
+        return services.filter { !skip.contains($0.port) }
+    }
+
+    // Ports we want detailed fetch logging for
+    private static let verbosePorts: Set<Int> = [443, 3460, 5001]
+
+    /// Smart dual-scheme probe: try preferred scheme first.
+    /// Only try fallback if the port is actually open (got a response or TLS error).
+    /// Skip fallback if the port is closed (timeout/connection refused) to avoid wasting connections.
+    static func fetchTitle(host: String, port: Int) async -> WebService? {
+        let preferred = httpsFirstPorts.contains(port) ? "https" : "http"
+        let fallback = preferred == "https" ? "http" : "https"
+        let verbose = verbosePorts.contains(port)
+        let shortHost = host.components(separatedBy: ".").first ?? host
+        // Track if any probe indicates the port is open (200 OK, 4xx, or SSL error).
+        // Used to create a fallback service when no <title> is found.
+        var openPortURL: URL?
+
+        if let url = URL(string: "\(preferred)://\(host):\(port)") {
+            let result = await httpTitle(url: url)
+            if verbose { dlog("    \(shortHost):\(port) \(preferred) -> \(result.debugLabel)") }
+            switch result {
+            case .found(let title, let finalURL):
+                return WebService(title: title, port: port, url: finalURL, isHTTPS: preferred == "https")
+            case .redirectedToPort(_):
+                return nil
+            case .noTitle(let u):
+                openPortURL = u
+            case .responded:
+                openPortURL = openPortURL ?? url // port IS open (SSL error or 4xx)
+            case .connectionFailed:
+                return nil // port is closed, don't waste a connection on fallback
+            }
+        }
+
+        if let url = URL(string: "\(fallback)://\(host):\(port)") {
+            let result = await httpTitle(url: url)
+            if verbose { dlog("    \(shortHost):\(port) \(fallback) -> \(result.debugLabel)") }
+            switch result {
+            case .found(let title, let finalURL):
+                return WebService(title: title, port: port, url: finalURL, isHTTPS: fallback == "https")
+            case .noTitle(let u):
+                openPortURL = openPortURL ?? u
+            case .responded:
+                openPortURL = openPortURL ?? url
+            default:
+                break
+            }
+        }
+
+        // Port is open but no <title> tag found (SPA, API, or auth-protected).
+        // Show with a fallback name.
+        if let url = openPortURL {
+            let name = knownServices[port] ?? "Port \(port)"
+            let isHTTPS = url.scheme == "https"
+            return WebService(title: name, port: port, url: url, isHTTPS: isHTTPS)
+        }
+
+        return nil
+    }
 
     enum FetchResult {
         case found(String, URL)
         case redirectedToPort(Int)
-        case notFound
-    }
+        case noTitle(URL)       // HTTP 200 OK but no <title> tag (SPA/API - port has a web app)
+        case responded          // HTTP 4xx/5xx or non-decodable (port open, try other scheme)
+        case connectionFailed   // couldn't connect at all (port closed/timeout, skip fallback)
 
-    static func fetchTitle(host: String, port: Int) async -> WebService? {
-        let schemes = httpsFirstPorts.contains(port) ? ["https", "http"] : ["http", "https"]
-        for scheme in schemes {
-            guard let url = URL(string: "\(scheme)://\(host):\(port)") else { continue }
-            let result = await httpTitle(url: url)
-            switch result {
-            case .redirectedToPort(_):
-                return nil
-            case .found(let title, let finalURL):
-                return WebService(title: title, port: port, url: finalURL, isHTTPS: scheme == "https")
-            case .notFound:
-                continue
+        var debugLabel: String {
+            switch self {
+            case .found(let t, _): return "found(\(t))"
+            case .redirectedToPort(let p): return "redirect(:\(p))"
+            case .noTitle(_): return "200(no title)"
+            case .responded: return "responded(error)"
+            case .connectionFailed: return "connFailed"
             }
         }
-        return nil
     }
 
     static func httpTitle(url: URL) async -> FetchResult {
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 3.0
-        config.timeoutIntervalForResource = 5.0
-        let delegate = RedirectDetectingDelegate()
-        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         do {
-            let (data, response) = try await session.data(from: url)
-            guard let http = response as? HTTPURLResponse else { return .notFound }
+            let (data, response) = try await sharedSession.data(from: url)
+            guard let http = response as? HTTPURLResponse else { return .responded }
 
-            if let redirectPort = delegate.redirectedToPort, redirectPort != url.port ?? (url.scheme == "https" ? 443 : 80) {
-                return .redirectedToPort(redirectPort)
+            // Detect redirect to a different port on the same host
+            if let finalURL = http.url,
+               let origPort = url.port, let finalPort = finalURL.port,
+               finalPort != origPort, finalURL.host == url.host {
+                return .redirectedToPort(finalPort)
             }
 
-            if http.statusCode >= 400 { return .notFound }
+            if http.statusCode >= 400 { return .responded }
 
             guard let html = String(data: data, encoding: .utf8)
-                          ?? String(data: data, encoding: .isoLatin1) else { return .notFound }
+                          ?? String(data: data, encoding: .isoLatin1) else { return .noTitle(url) }
+
+            // If the response doesn't look like HTML (no tags at all), it's a plain text
+            // API endpoint (e.g., Ollama "Ollama is running") or a non-web protocol.
+            // Don't create a fallback service for these.
+            let lower = html.prefix(2000).lowercased()
+            if !lower.contains("<html") && !lower.contains("<!doctype") && !lower.contains("<head") && !lower.contains("<body") {
+                return .responded
+            }
 
             guard let range = html.range(of: #"<title[^>]*>([^<]+)</title>"#,
-                                          options: [.regularExpression, .caseInsensitive]) else { return .notFound }
+                                          options: [.regularExpression, .caseInsensitive]) else { return .noTitle(url) }
             var raw = String(html[range])
                 .replacingOccurrences(of: #"<title[^>]*>"#, with: "", options: .regularExpression)
                 .replacingOccurrences(of: "</title>", with: "", options: .caseInsensitive)
@@ -428,16 +757,28 @@ enum Scanner {
             if let sepRange = raw.range(of: #"\s+[-–—|]\s+"#, options: [.regularExpression, .backwards]) {
                 raw = String(raw[sepRange.upperBound...]).trimmingCharacters(in: .whitespaces)
             }
-            if raw.isEmpty { return .notFound }
+            if raw.isEmpty { return .noTitle(url) }
             return .found(raw, url)
         } catch {
-            return .notFound
+            // TLS/SSL errors (code -1200 to -1206) mean the port IS open but doesn't
+            // speak TLS. Caller should try the other scheme.
+            let nsErr = error as NSError
+            let code = nsErr.code
+            // Log the underlying error for key ports
+            if let port = url.port, verbosePorts.contains(port) {
+                let underlying = (nsErr.userInfo[NSUnderlyingErrorKey] as? NSError)?.code
+                dlog("    \(url.host ?? "?"):\(port) err: \(nsErr.domain) \(code) underlying:\(underlying ?? 0)")
+            }
+            if (-1206)...(-1200) ~= code { return .responded }
+            // Everything else (timeout, connection refused, etc.) means port is closed.
+            return .connectionFailed
         }
     }
 }
 
-class RedirectDetectingDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
-    var redirectedToPort: Int?
+// Accepts self-signed certs (shared singleton)
+class InsecureTLSDelegate: NSObject, URLSessionDelegate {
+    static let shared = InsecureTLSDelegate()
 
     func urlSession(_ session: URLSession,
                     didReceive challenge: URLAuthenticationChallenge,
@@ -447,16 +788,5 @@ class RedirectDetectingDelegate: NSObject, URLSessionDelegate, URLSessionTaskDel
         } else {
             completionHandler(.cancelAuthenticationChallenge, nil)
         }
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask,
-                    willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest,
-                    completionHandler: @escaping (URLRequest?) -> Void) {
-        if let redirectURL = request.url {
-            let port = redirectURL.port ?? (redirectURL.scheme == "https" ? 443 : 80)
-            redirectedToPort = port
-        }
-        completionHandler(request)
     }
 }

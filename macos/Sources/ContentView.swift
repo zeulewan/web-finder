@@ -6,6 +6,7 @@ import SwiftUI
 class ScannerModel: ObservableObject {
     @Published var devices: [Device] = []
     @Published var scanning = false
+    @Published var scanProgress: Double = 0
     @Published var lastScan: Date?
     @Published var showAllPorts = false {
         didSet { UserDefaults.standard.set(showAllPorts, forKey: "showAllPorts") }
@@ -13,19 +14,31 @@ class ScannerModel: ObservableObject {
     @Published var showAllDevices = false {
         didSet { UserDefaults.standard.set(showAllDevices, forKey: "showAllDevices") }
     }
+    @Published var minimalMode = true {
+        didSet { UserDefaults.standard.set(minimalMode, forKey: "minimalMode") }
+    }
 
     init() {
         showAllPorts = UserDefaults.standard.bool(forKey: "showAllPorts")
         showAllDevices = UserDefaults.standard.bool(forKey: "showAllDevices")
+        if UserDefaults.standard.object(forKey: "minimalMode") == nil {
+            minimalMode = true
+        } else {
+            minimalMode = UserDefaults.standard.bool(forKey: "minimalMode")
+        }
     }
 
     func scan() {
         guard !scanning else { return }
         scanning = true
+        scanProgress = 0
         Task {
-            let result = await Scanner.scanAll(showAll: showAllPorts)
+            let result = await Scanner.scanAll(showAll: showAllPorts) { progress in
+                Task { @MainActor in self.scanProgress = progress }
+            }
             self.devices = result
             self.lastScan = Date()
+            self.scanProgress = 1
             self.scanning = false
         }
     }
@@ -40,7 +53,13 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             headerBar
-            Divider()
+            if model.scanning {
+                ProgressView(value: model.scanProgress)
+                    .tint(.accentColor)
+                    .frame(height: 2)
+            } else {
+                Divider()
+            }
             if showSettings {
                 settingsView
             } else {
@@ -98,41 +117,44 @@ struct ContentView: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.secondary)
 
-            Toggle(isOn: $model.showAllPorts) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Show non-web ports")
-                        .font(.system(size: 12))
-                    Text("AirPlay, SSH, and ports without a web page")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .onChange(of: model.showAllPorts) { _ in
-                model.scan()
-            }
+            settingsRow(title: "Minimal mode",
+                        subtitle: "Hide port numbers and IP addresses",
+                        isOn: $model.minimalMode)
 
-            Toggle(isOn: $model.showAllDevices) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Show all devices")
-                        .font(.system(size: 12))
-                    Text("Include devices with no web services")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
+            settingsRow(title: "Show non-web ports",
+                        subtitle: "AirPlay, SSH, and ports without a web page",
+                        isOn: $model.showAllPorts)
+                .onChange(of: model.showAllPorts) { _ in model.scan() }
+
+            settingsRow(title: "Show all devices",
+                        subtitle: "Include devices with no web services",
+                        isOn: $model.showAllDevices)
 
             Spacer()
 
-            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")")
+            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "\u{2014}")")
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    func settingsRow(title: String, subtitle: String, isOn: Binding<Bool>) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12))
+                Text(subtitle)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            Toggle("", isOn: isOn)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .labelsHidden()
+        }
     }
 
     // MARK: Content
@@ -146,7 +168,7 @@ struct ContentView: View {
     }
 
     var scrollContent: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: false) {
             if model.devices.isEmpty && !model.scanning {
                 Text("No devices found")
                     .font(.system(size: 12))
@@ -156,7 +178,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     let visible = model.showAllDevices ? model.devices : activeDevices
                     ForEach(visible) { device in
-                        DeviceSection(device: device)
+                        DeviceSection(device: device, minimal: model.minimalMode)
                         if device.id != visible.last?.id {
                             Divider().padding(.horizontal, 10)
                         }
@@ -195,6 +217,7 @@ struct ContentView: View {
 
 struct DeviceSection: View {
     let device: Device
+    let minimal: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -223,9 +246,11 @@ struct DeviceSection: View {
                     .foregroundColor(Color(.tertiaryLabelColor))
             }
             Spacer()
-            Text(device.ip)
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundColor(Color(.tertiaryLabelColor))
+            if !minimal {
+                Text(device.ip)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(Color(.tertiaryLabelColor))
+            }
         }
         .padding(.horizontal, 12)
         .padding(.top, 10)
@@ -244,7 +269,7 @@ struct DeviceSection: View {
                 .padding(.bottom, 8)
         } else {
             ForEach(device.services) { service in
-                ServiceRow(service: service)
+                ServiceRow(service: service, minimal: minimal)
             }
             .padding(.bottom, 4)
         }
@@ -255,6 +280,7 @@ struct DeviceSection: View {
 
 struct ServiceRow: View {
     let service: WebService
+    let minimal: Bool
     @State private var hovered = false
 
     var body: some View {
@@ -270,9 +296,11 @@ struct ServiceRow: View {
 
             Spacer()
 
-            Text(":\(service.port)")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(.secondary)
+            if !minimal {
+                Text(":\(service.port)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
 
             Button {
                 NSWorkspace.shared.open(service.url)

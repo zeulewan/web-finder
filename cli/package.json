@@ -1,6 +1,6 @@
 {
   "name": "zensical-scanner",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Scan for Zensical servers locally and across Tailscale",
   "main": "main.js",
   "bin": {

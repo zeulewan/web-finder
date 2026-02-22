@@ -246,22 +246,50 @@ async function scanGateway({ showAll = false } = {}) {
   const openPorts = await scanPorts(ip, gatewayPorts);
   if (openPorts.length === 0) return null;
 
-  // Only show ports with a real HTTP response (no showAll - gateway ports
-  // often have open TCP ports that don't serve anything useful)
+  // Fetch with showAll, rename generic "Port X" fallbacks to "Admin Page"
   const services = await Promise.all(openPorts.map(async (port) => {
-    const svc = await fetchService(ip, port, { showAll: false });
+    const svc = await fetchService(ip, port, { showAll: true });
     if (!svc) return null;
-    return { title: svc.title, host: ip, port, url: svc.url };
+    const title = svc.title.startsWith('Port ') ? 'Admin Page' : svc.title;
+    return { title, host: ip, port, url: svc.url };
   }));
 
   const found = dedup(services.filter(Boolean));
   if (found.length === 0) return null;
-  // Use the page title as device name (e.g. "UniFi OS"),
-  // fall back to ISP name + Modem, then just "Gateway"
+  // Detect hardware model (e.g. "UniFi Express") then fall back to page title, ISP, etc.
+  const model = await detectUnifiModel(ip);
   const title = found[0]?.title;
   const isp = await getISPName();
-  const name = title || (isp ? `${isp} Modem` : 'Gateway');
+  const name = model || title || (isp ? `${isp} Modem` : 'Gateway');
   return { name, ip, services: found };
+}
+
+/** Detect UniFi hardware model from UNIFI_OS_MANIFEST in the gateway page. */
+function detectUnifiModel(host) {
+  return new Promise((resolve) => {
+    let buf = '';
+    const req = https.get(`https://${host}`, {
+      timeout: 3000,
+      rejectUnauthorized: false,
+      headers: { 'User-Agent': 'web-finder/1.0' },
+    }, (res) => {
+      res.on('data', (chunk) => {
+        buf += chunk;
+        if (buf.length > 16384) { req.destroy(); }
+        const m = buf.match(/UNIFI_OS_MANIFEST\s*=\s*(\{[^<]*\})/);
+        if (m) {
+          req.destroy();
+          try {
+            const manifest = JSON.parse(m[1]);
+            resolve(manifest.model?.shortName || manifest.model?.longName || null);
+          } catch { resolve(null); }
+        }
+      });
+      res.on('end', () => resolve(null));
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
 }
 
 async function getISPName() {

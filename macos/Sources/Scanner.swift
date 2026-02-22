@@ -95,11 +95,11 @@ enum Scanner {
 
     // MARK: - Top-level scan
 
-    static func scanAll(showAll: Bool = false) async -> [Device] {
+    static func scanAll(showAll: Bool = false, onProgress: (@Sendable (Double) -> Void)? = nil) async -> [Device] {
         // Run local, gateway, and Tailscale scans in parallel
         async let local   = scanLocalDevice(showAll: showAll)
         async let gateway = scanGateway(showAll: showAll)
-        async let remote  = scanTailscaleDevices(showAll: showAll)
+        async let remote  = scanTailscaleDevices(showAll: showAll, onProgress: onProgress)
 
         var all = [await local] + (await remote)
         if let gw = await gateway { all.append(gw) }
@@ -173,23 +173,50 @@ enum Scanner {
         let openPorts = await tcpScanPorts(host: ip, ports: gatewayPorts)
         guard !openPorts.isEmpty else { return nil }
 
-        // Only show ports with a real HTTP response (no showAll - gateway ports often have
-        // open TCP ports that don't serve anything useful)
-        let services = await fetchServices(host: ip, ports: openPorts, hints: [:], showAll: false)
+        // Fetch with showAll, rename generic "Port X" fallbacks to "Admin Page"
+        let allServices = await fetchServices(host: ip, ports: openPorts, hints: [:], showAll: true)
+        let services = allServices.map { svc -> WebService in
+            if svc.title.hasPrefix("Port ") {
+                return WebService(title: "Admin Page", port: svc.port, url: svc.url, isHTTPS: svc.isHTTPS)
+            }
+            return svc
+        }
         guard !services.isEmpty else { return nil }
 
-        // Use the page title as device name (e.g. "UniFi OS"),
-        // fall back to ISP name + Modem, then just "Gateway"
+        // Detect hardware model (e.g. "UniFi Express"), fall back to page title, ISP, etc.
+        let model = await detectUnifiModel(host: ip)
         let name: String
-        if let title = services.first?.title {
-            name = title
-        } else if let isp = await getISPName() {
-            name = "\(isp) Modem"
-        } else {
-            name = "Gateway"
-        }
+        if let model { name = model }
+        else if let title = services.first?.title { name = title }
+        else if let isp = await getISPName() { name = "\(isp) Modem" }
+        else { name = "Gateway" }
         return Device(name: name, ip: ip, isLocal: false, isGateway: true, os: nil,
                       online: true, services: services)
+    }
+
+    /// Detect UniFi hardware model from UNIFI_OS_MANIFEST in the gateway page.
+    static func detectUnifiModel(host: String) async -> String? {
+        guard let url = URL(string: "https://\(host)") else { return nil }
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 3.0
+        let delegate = RedirectDetectingDelegate()
+        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            guard let html = String(data: data, encoding: .utf8) else { return nil }
+            guard let start = html.range(of: "UNIFI_OS_MANIFEST") else { return nil }
+            let after = html[start.upperBound...]
+            guard let braceStart = after.firstIndex(of: "{"),
+                  let scriptEnd = after.range(of: "</script>") else { return nil }
+            let jsonStr = String(after[braceStart..<scriptEnd.lowerBound]).trimmingCharacters(in: .whitespaces)
+            guard let jsonData = jsonStr.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                  let model = obj["model"] as? [String: Any] else { return nil }
+            return (model["shortName"] as? String) ?? (model["longName"] as? String)
+        } catch {
+            return nil
+        }
     }
 
     static func getISPName() async -> String? {
@@ -209,7 +236,7 @@ enum Scanner {
 
     // MARK: - Tailscale
 
-    static func scanTailscaleDevices(showAll: Bool = false) async -> [Device] {
+    static func scanTailscaleDevices(showAll: Bool = false, onProgress: (@Sendable (Double) -> Void)? = nil) async -> [Device] {
         guard let statusJSON = await tailscaleStatus(),
               let data = statusJSON.data(using: .utf8),
               let obj  = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -243,6 +270,7 @@ enum Scanner {
                             os: peer["OS"] as? String)
         }
 
+        let totalPeers = max(peers.count, 1)
         return await withTaskGroup(of: Device.self) { group in
             for peer in peers {
                 group.addTask {
@@ -258,7 +286,10 @@ enum Scanner {
                 }
             }
             var results: [Device] = []
-            for await d in group { results.append(d) }
+            for await d in group {
+                results.append(d)
+                onProgress?(Double(results.count) / Double(totalPeers))
+            }
             return results
         }
     }
