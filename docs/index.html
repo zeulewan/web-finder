@@ -531,38 +531,42 @@
       position: relative;
       width: 220px;
       flex-shrink: 0;
-      border-radius: 28px;
+      border-radius: 32px;
       overflow: hidden;
-      border: 2px solid var(--border-lt);
+      border: 6px solid #2a2a2e;
       box-shadow:
         0 8px 40px rgba(0,0,0,0.5),
-        0 0 0 1px rgba(30,45,61,0.3);
+        0 0 0 1px rgba(60,60,65,0.6),
+        inset 0 0 0 1px rgba(0,0,0,0.8);
       background: #000;
       transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
     .phone-frame::after {
       content: '';
       position: absolute;
-      top: 8px;
+      top: 6px;
       left: 50%;
       transform: translateX(-50%);
-      width: 72px;
-      height: 22px;
+      width: 62px;
+      height: 18px;
       background: #000;
       border-radius: 20px;
       z-index: 10;
+      box-shadow: 0 0 0 1px rgba(40,40,45,0.5);
     }
     .phone-frame:hover {
       transform: translateY(-4px);
       box-shadow:
         0 12px 48px rgba(0,0,0,0.6),
-        0 0 0 1px rgba(34,211,238,0.2);
+        0 0 0 1px rgba(60,60,65,0.8),
+        inset 0 0 0 1px rgba(0,0,0,0.8);
     }
 
     .phone-frame img,
     .phone-frame video {
       width: 100%;
       display: block;
+      border-radius: 2px;
     }
 
     @media (max-width: 720px) {
@@ -571,12 +575,13 @@
       }
       .phone-frame {
         width: 160px;
-        border-radius: 20px;
+        border-radius: 24px;
+        border-width: 5px;
       }
       .phone-frame::after {
-        top: 6px;
-        width: 52px;
-        height: 16px;
+        top: 4px;
+        width: 44px;
+        height: 13px;
       }
     }
 
@@ -595,12 +600,13 @@
       }
       .phone-frame {
         width: 200px;
-        border-radius: 24px;
+        border-radius: 30px;
+        border-width: 5px;
       }
       .phone-frame::after {
-        top: 7px;
-        width: 66px;
-        height: 20px;
+        top: 5px;
+        width: 56px;
+        height: 16px;
       }
     }
 
@@ -613,7 +619,7 @@
         background: radial-gradient(circle, rgba(13,148,136,0.06) 0%, transparent 70%);
       }
       .phone-frame {
-        background: #fff;
+        border-color: #3a3a3e;
       }
       .screenshot-wrap img {
         box-shadow: 0 4px 24px rgba(0,0,0,0.1), 0 0 0 1px rgba(226,232,240,0.8);
