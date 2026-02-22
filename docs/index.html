@@ -536,12 +536,12 @@
     }
     .phone-device .phone-screen {
       position: absolute;
-      /* screen area percentages from SVG coordinates */
-      top: 1.42%;     /* 12/843 */
-      left: 3.61%;    /* 15/415 */
-      width: 92.77%;  /* 385/415 */
-      height: 97.15%; /* 819/843 */
-      border-radius: 12.5% / 6.1%;
+      /* bleed slightly under bezel to prevent edge cropping */
+      top: 1.07%;     /* 9/843 */
+      left: 2.89%;    /* 12/415 */
+      width: 94.22%;  /* 391/415 */
+      height: 97.86%; /* 825/843 */
+      border-radius: 13% / 6.5%;
       overflow: hidden;
     }
     .phone-device .phone-screen img,
