@@ -736,12 +736,29 @@
 
     <div class="showcase-item fade-up">
       <div class="showcase-label">iPhone App</div>
-      <div class="phone-gallery" style="justify-content: center;">
-        <div class="phone-frame">
-          <picture>
-            <source srcset="phone-light.png" media="(prefers-color-scheme: light)">
-            <img src="phone-dark.png" alt="Web Finder iOS app showing discovered web interfaces">
-          </picture>
+      <div class="phone-gallery">
+        <div class="phone-frame-wrap">
+          <div class="phone-label">Devices</div>
+          <div class="phone-frame">
+            <picture>
+              <source srcset="phone-light.png" media="(prefers-color-scheme: light)">
+              <img src="phone-dark.png" alt="Web Finder iOS showing discovered web interfaces">
+            </picture>
+          </div>
+        </div>
+        <div class="phone-frame-wrap">
+          <div class="phone-label">Setup Guide</div>
+          <div class="phone-frame">
+            <video autoplay muted loop playsinline>
+              <source src="ios-demo.mp4" type="video/mp4">
+            </video>
+          </div>
+        </div>
+        <div class="phone-frame-wrap">
+          <div class="phone-label">Auth</div>
+          <div class="phone-frame">
+            <img src="ios-setup.png" alt="Web Finder iOS OAuth setup screen">
+          </div>
         </div>
       </div>
     </div>
@@ -771,63 +788,6 @@
   </div>
 </div>
 
-<!-- iOS -->
-<div class="content-section fade-up" id="ios">
-  <h2>iPhone app</h2>
-  <p class="section-sub">The same scanning power in your pocket. Discover web interfaces from anywhere on your Tailscale network.</p>
-
-  <div class="ios-showcase">
-    <div class="phone-gallery">
-      <div class="phone-frame-wrap">
-        <div class="phone-label">Devices</div>
-        <div class="phone-frame">
-          <picture>
-            <source srcset="phone-light.png" media="(prefers-color-scheme: light)">
-            <img src="phone-dark.png" alt="Web Finder iOS showing discovered web interfaces">
-          </picture>
-        </div>
-      </div>
-      <div class="phone-frame-wrap">
-        <div class="phone-label">Setup Guide</div>
-        <div class="phone-frame">
-          <video autoplay muted loop playsinline>
-            <source src="ios-demo.mp4" type="video/mp4">
-          </video>
-        </div>
-      </div>
-      <div class="phone-frame-wrap">
-        <div class="phone-label">Auth</div>
-        <div class="phone-frame">
-          <img src="ios-setup.png" alt="Web Finder iOS OAuth setup screen">
-        </div>
-      </div>
-    </div>
-
-    <div class="ios-features">
-      <div class="ios-feature">
-        <span class="ios-feature-icon">&#x26A1;</span>
-        <div>
-          <strong>Instant discovery</strong>
-          <p>Scans all Tailscale peers and their open ports in seconds</p>
-        </div>
-      </div>
-      <div class="ios-feature">
-        <span class="ios-feature-icon">&#x1F512;</span>
-        <div>
-          <strong>One-time OAuth setup</strong>
-          <p>Credentials never expire, stored locally on device</p>
-        </div>
-      </div>
-      <div class="ios-feature">
-        <span class="ios-feature-icon">&#x1F310;</span>
-        <div>
-          <strong>Tap to open</strong>
-          <p>Jump straight to any web interface in Safari</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- INSTALL -->
 <div class="content-section fade-up" id="install">
