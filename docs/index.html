@@ -32,6 +32,26 @@
       --radius:    12px;
     }
 
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg:        #f8fafc;
+        --bg-wash:   #f1f5f9;
+        --surface:   #ffffff;
+        --surface-2: #f1f5f9;
+        --border:    #e2e8f0;
+        --border-lt: #cbd5e1;
+        --text:      #0f172a;
+        --text-dim:  #475569;
+        --text-faint:#94a3b8;
+        --cyan:      #0891b2;
+        --cyan-dim:  #0e7490;
+        --teal:      #0d9488;
+        --amber:     #d97706;
+        --green:     #059669;
+        --blue:      #2563eb;
+      }
+    }
+
     html { scroll-behavior: smooth; }
 
     body {
@@ -89,6 +109,12 @@
       -webkit-backdrop-filter: blur(16px) saturate(180%);
       border-bottom: 1px solid rgba(30,45,61,0.5);
     }
+    @media (prefers-color-scheme: light) {
+      nav {
+        background: rgba(248,250,252,0.85);
+        border-bottom-color: rgba(226,232,240,0.8);
+      }
+    }
     nav .logo {
       font-size: 15px;
       font-weight: 600;
@@ -130,6 +156,13 @@
       background: linear-gradient(160deg, #fff 20%, var(--cyan) 80%, var(--teal));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
+    }
+    @media (prefers-color-scheme: light) {
+      .hero h1 {
+        background: linear-gradient(160deg, #0f172a 20%, var(--cyan) 80%, var(--teal));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
     }
     .hero p {
       font-size: 17px;
@@ -598,6 +631,39 @@
       .phone-frame {
         width: 200px;
         border-radius: 24px;
+      }
+    }
+
+    /* ---- LIGHT MODE OVERRIDES ---- */
+    @media (prefers-color-scheme: light) {
+      .bg-glow::before {
+        background: radial-gradient(circle, rgba(8,145,178,0.08) 0%, transparent 70%);
+      }
+      .bg-glow::after {
+        background: radial-gradient(circle, rgba(13,148,136,0.06) 0%, transparent 70%);
+      }
+      .phone-frame {
+        background: #fff;
+      }
+      .screenshot-wrap img {
+        box-shadow: 0 4px 24px rgba(0,0,0,0.1), 0 0 0 1px rgba(226,232,240,0.8);
+      }
+      .platform-tag {
+        background: rgba(255,255,255,0.6);
+        border-color: var(--border);
+      }
+      .platform-tag:hover {
+        background: rgba(255,255,255,0.9);
+      }
+      .dot-green {
+        box-shadow: 0 0 8px rgba(5,150,105,0.4);
+      }
+      .dot-cyan {
+        box-shadow: 0 0 8px rgba(8,145,178,0.4);
+      }
+      nav .badge {
+        background: linear-gradient(135deg, var(--cyan-dim), var(--cyan));
+        color: #fff;
       }
     }
 

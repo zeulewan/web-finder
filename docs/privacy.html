@@ -8,9 +8,27 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <style>
+    :root {
+      --bg: #080c14;
+      --text: #e2e8f0;
+      --text-dim: #94a3b8;
+      --text-faint: #64748b;
+      --cyan: #22d3ee;
+      --teal: #2dd4bf;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f8fafc;
+        --text: #0f172a;
+        --text-dim: #475569;
+        --text-faint: #94a3b8;
+        --cyan: #0891b2;
+        --teal: #0d9488;
+      }
+    }
     body {
-      background: #080c14;
-      color: #e2e8f0;
+      background: var(--bg);
+      color: var(--text);
       font-family: -apple-system, system-ui, sans-serif;
       line-height: 1.7;
       max-width: 640px;
@@ -18,14 +36,14 @@
       padding: 60px 24px;
     }
     h1 { font-size: 28px; margin-bottom: 8px; }
-    h2 { font-size: 18px; margin-top: 32px; margin-bottom: 8px; color: #22d3ee; }
-    p, li { color: #94a3b8; font-size: 15px; }
-    a { color: #22d3ee; text-decoration: none; }
-    a:hover { color: #2dd4bf; }
+    h2 { font-size: 18px; margin-top: 32px; margin-bottom: 8px; color: var(--cyan); }
+    p, li { color: var(--text-dim); font-size: 15px; }
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { color: var(--teal); }
     ul { padding-left: 20px; }
     li { margin-bottom: 6px; }
-    .back { display: inline-block; margin-bottom: 32px; font-size: 13px; color: #64748b; }
-    .updated { margin-top: 40px; font-size: 13px; color: #64748b; }
+    .back { display: inline-block; margin-bottom: 32px; font-size: 13px; color: var(--text-faint); }
+    .updated { margin-top: 40px; font-size: 13px; color: var(--text-faint); }
   </style>
 </head>
 <body>
