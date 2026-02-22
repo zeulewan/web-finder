@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/devices.css@0.2.0/dist/devices.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/@sneas/telephone@1/iphone-16-max.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -528,16 +528,16 @@
       color: var(--text-faint);
     }
 
-    /* Scale devices.css iPhone 14 Pro (428px native) */
+    /* Scale telephone web component (415x843 native) */
     .phone-device {
-      transform: scale(0.52);
-      transform-origin: top center;
-      margin-bottom: -416px; /* compensate for scaled empty space: 868 * (1 - 0.52) */
+      width: 220px;
     }
-    .phone-device .device-screen {
+    .phone-device img,
+    .phone-device video {
       width: 100%;
       height: 100%;
       object-fit: cover;
+      display: block;
     }
 
     @media (max-width: 720px) {
@@ -545,8 +545,7 @@
         gap: 12px;
       }
       .phone-device {
-        transform: scale(0.38);
-        margin-bottom: -538px; /* 868 * (1 - 0.38) */
+        width: 160px;
       }
     }
 
@@ -564,8 +563,7 @@
         flex-shrink: 0;
       }
       .phone-device {
-        transform: scale(0.47);
-        margin-bottom: -460px; /* 868 * (1 - 0.47) */
+        width: 200px;
       }
     }
 
@@ -702,19 +700,12 @@
     <div class="showcase-item fade-up">
       <div class="showcase-label">iPhone App</div>
       <div class="phone-gallery">
-        <div class="device device-iphone-14-pro phone-device">
-          <div class="device-frame">
-            <picture class="device-screen">
-              <source srcset="phone-light.png" media="(prefers-color-scheme: light)">
-              <img class="device-screen" src="phone-dark.png" alt="Web Finder iOS showing discovered web interfaces">
-            </picture>
-          </div>
-          <div class="device-stripe"></div>
-          <div class="device-header"></div>
-          <div class="device-sensors"></div>
-          <div class="device-btns"></div>
-          <div class="device-power"></div>
-        </div>
+        <iphone-16-max mode="dark" class="phone-device">
+          <picture>
+            <source srcset="phone-light.png" media="(prefers-color-scheme: light)">
+            <img src="phone-dark.png" alt="Web Finder iOS showing discovered web interfaces">
+          </picture>
+        </iphone-16-max>
       </div>
       <details class="setup-dropdown">
         <summary>Setup guide</summary>
@@ -722,34 +713,20 @@
         <div class="phone-gallery" style="margin-top: 20px;">
           <div class="phone-frame-wrap">
             <div class="phone-label">Walkthrough</div>
-            <div class="device device-iphone-14-pro phone-device">
-              <div class="device-frame">
-                <video class="device-screen" autoplay muted loop playsinline>
-                  <source src="ios-demo.mp4" type="video/mp4">
-                </video>
-              </div>
-              <div class="device-stripe"></div>
-              <div class="device-header"></div>
-              <div class="device-sensors"></div>
-              <div class="device-btns"></div>
-              <div class="device-power"></div>
-            </div>
+            <iphone-16-max mode="dark" class="phone-device">
+              <video autoplay muted loop playsinline>
+                <source src="ios-demo.mp4" type="video/mp4">
+              </video>
+            </iphone-16-max>
           </div>
           <div class="phone-frame-wrap">
             <div class="phone-label">Auth</div>
-            <div class="device device-iphone-14-pro phone-device">
-              <div class="device-frame">
-                <picture class="device-screen">
-                  <source srcset="auth-light.png" media="(prefers-color-scheme: light)">
-                  <img class="device-screen" src="auth-dark.png" alt="Web Finder iOS OAuth setup screen">
-                </picture>
-              </div>
-              <div class="device-stripe"></div>
-              <div class="device-header"></div>
-              <div class="device-sensors"></div>
-              <div class="device-btns"></div>
-              <div class="device-power"></div>
-            </div>
+            <iphone-16-max mode="dark" class="phone-device">
+              <picture>
+                <source srcset="auth-light.png" media="(prefers-color-scheme: light)">
+                <img src="auth-dark.png" alt="Web Finder iOS OAuth setup screen">
+              </picture>
+            </iphone-16-max>
           </div>
         </div>
       </details>
