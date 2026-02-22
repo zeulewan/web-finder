@@ -667,6 +667,39 @@
       }
     }
 
+    /* ---- SETUP DROPDOWN ---- */
+    .setup-dropdown {
+      margin-top: 16px;
+      text-align: center;
+    }
+    .setup-dropdown summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-faint);
+      cursor: pointer;
+      padding: 6px 16px;
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      background: var(--surface);
+      transition: color 0.2s, border-color 0.2s;
+      list-style: none;
+    }
+    .setup-dropdown summary::-webkit-details-marker { display: none; }
+    .setup-dropdown summary::after {
+      content: '\25BC';
+      font-size: 9px;
+      transition: transform 0.2s;
+    }
+    .setup-dropdown[open] summary::after {
+      transform: rotate(180deg);
+    }
+    .setup-dropdown summary:hover {
+      color: var(--text-dim);
+      border-color: var(--border-lt);
+    }
+
     /* ---- ANIMATIONS ---- */
     .fade-up {
       opacity: 0;
@@ -736,31 +769,33 @@
 
     <div class="showcase-item fade-up">
       <div class="showcase-label">iPhone App</div>
-      <div class="phone-gallery">
-        <div class="phone-frame-wrap">
-          <div class="phone-label">Devices</div>
-          <div class="phone-frame">
-            <picture>
-              <source srcset="phone-light.png" media="(prefers-color-scheme: light)">
-              <img src="phone-dark.png" alt="Web Finder iOS showing discovered web interfaces">
-            </picture>
-          </div>
-        </div>
-        <div class="phone-frame-wrap">
-          <div class="phone-label">Setup Guide</div>
-          <div class="phone-frame">
-            <video autoplay muted loop playsinline>
-              <source src="ios-demo.mp4" type="video/mp4">
-            </video>
-          </div>
-        </div>
-        <div class="phone-frame-wrap">
-          <div class="phone-label">Auth</div>
-          <div class="phone-frame">
-            <img src="ios-setup.png" alt="Web Finder iOS OAuth setup screen">
-          </div>
+      <div class="phone-gallery" style="justify-content: center;">
+        <div class="phone-frame">
+          <picture>
+            <source srcset="phone-light.png" media="(prefers-color-scheme: light)">
+            <img src="phone-dark.png" alt="Web Finder iOS showing discovered web interfaces">
+          </picture>
         </div>
       </div>
+      <details class="setup-dropdown">
+        <summary>Setup guide</summary>
+        <div class="phone-gallery" style="margin-top: 20px;">
+          <div class="phone-frame-wrap">
+            <div class="phone-label">Setup Guide</div>
+            <div class="phone-frame">
+              <video autoplay muted loop playsinline>
+                <source src="ios-demo.mp4" type="video/mp4">
+              </video>
+            </div>
+          </div>
+          <div class="phone-frame-wrap">
+            <div class="phone-label">Auth</div>
+            <div class="phone-frame">
+              <img src="ios-setup.png" alt="Web Finder iOS OAuth setup screen">
+            </div>
+          </div>
+        </div>
+      </details>
     </div>
 
     <div class="showcase-item fade-up">
