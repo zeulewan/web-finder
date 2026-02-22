@@ -528,6 +528,7 @@
     }
 
     .phone-frame {
+      position: relative;
       width: 220px;
       flex-shrink: 0;
       border-radius: 28px;
@@ -538,6 +539,18 @@
         0 0 0 1px rgba(30,45,61,0.3);
       background: #000;
       transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .phone-frame::after {
+      content: '';
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 72px;
+      height: 22px;
+      background: #000;
+      border-radius: 20px;
+      z-index: 10;
     }
     .phone-frame:hover {
       transform: translateY(-4px);
@@ -560,6 +573,11 @@
         width: 160px;
         border-radius: 20px;
       }
+      .phone-frame::after {
+        top: 6px;
+        width: 52px;
+        height: 16px;
+      }
     }
 
     @media (max-width: 480px) {
@@ -578,6 +596,11 @@
       .phone-frame {
         width: 200px;
         border-radius: 24px;
+      }
+      .phone-frame::after {
+        top: 7px;
+        width: 66px;
+        height: 20px;
       }
     }
 
