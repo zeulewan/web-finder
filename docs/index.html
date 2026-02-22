@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/devices.css@0.2.0/dist/devices.min.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -527,61 +528,25 @@
       color: var(--text-faint);
     }
 
-    .phone-frame {
-      position: relative;
-      width: 220px;
-      flex-shrink: 0;
-      border-radius: 32px;
-      overflow: hidden;
-      border: 6px solid #2a2a2e;
-      box-shadow:
-        0 8px 40px rgba(0,0,0,0.5),
-        0 0 0 1px rgba(60,60,65,0.6),
-        inset 0 0 0 1px rgba(0,0,0,0.8);
-      background: #000;
-      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    /* Scale devices.css iPhone 14 Pro (428px native) */
+    .phone-device {
+      transform: scale(0.52);
+      transform-origin: top center;
+      margin-bottom: -416px; /* compensate for scaled empty space: 868 * (1 - 0.52) */
     }
-    .phone-frame::after {
-      content: '';
-      position: absolute;
-      top: 6px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 62px;
-      height: 18px;
-      background: #000;
-      border-radius: 20px;
-      z-index: 10;
-      box-shadow: 0 0 0 1px rgba(40,40,45,0.5);
-    }
-    .phone-frame:hover {
-      transform: translateY(-4px);
-      box-shadow:
-        0 12px 48px rgba(0,0,0,0.6),
-        0 0 0 1px rgba(60,60,65,0.8),
-        inset 0 0 0 1px rgba(0,0,0,0.8);
-    }
-
-    .phone-frame img,
-    .phone-frame video {
+    .phone-device .device-screen {
       width: 100%;
-      display: block;
-      border-radius: 2px;
+      height: 100%;
+      object-fit: cover;
     }
 
     @media (max-width: 720px) {
       .phone-gallery {
         gap: 12px;
       }
-      .phone-frame {
-        width: 160px;
-        border-radius: 24px;
-        border-width: 5px;
-      }
-      .phone-frame::after {
-        top: 4px;
-        width: 44px;
-        height: 13px;
+      .phone-device {
+        transform: scale(0.38);
+        margin-bottom: -538px; /* 868 * (1 - 0.38) */
       }
     }
 
@@ -598,15 +563,9 @@
         scroll-snap-align: center;
         flex-shrink: 0;
       }
-      .phone-frame {
-        width: 200px;
-        border-radius: 30px;
-        border-width: 5px;
-      }
-      .phone-frame::after {
-        top: 5px;
-        width: 56px;
-        height: 16px;
+      .phone-device {
+        transform: scale(0.47);
+        margin-bottom: -460px; /* 868 * (1 - 0.47) */
       }
     }
 
@@ -617,9 +576,6 @@
       }
       .bg-glow::after {
         background: radial-gradient(circle, rgba(13,148,136,0.06) 0%, transparent 70%);
-      }
-      .phone-frame {
-        border-color: #3a3a3e;
       }
       .screenshot-wrap img {
         box-shadow: 0 4px 24px rgba(0,0,0,0.1), 0 0 0 1px rgba(226,232,240,0.8);
@@ -746,11 +702,18 @@
     <div class="showcase-item fade-up">
       <div class="showcase-label">iPhone App</div>
       <div class="phone-gallery">
-        <div class="phone-frame">
-          <picture>
-            <source srcset="phone-light.png" media="(prefers-color-scheme: light)">
-            <img src="phone-dark.png" alt="Web Finder iOS showing discovered web interfaces">
-          </picture>
+        <div class="device device-iphone-14-pro phone-device">
+          <div class="device-frame">
+            <picture class="device-screen">
+              <source srcset="phone-light.png" media="(prefers-color-scheme: light)">
+              <img class="device-screen" src="phone-dark.png" alt="Web Finder iOS showing discovered web interfaces">
+            </picture>
+          </div>
+          <div class="device-stripe"></div>
+          <div class="device-header"></div>
+          <div class="device-sensors"></div>
+          <div class="device-btns"></div>
+          <div class="device-power"></div>
         </div>
       </div>
       <details class="setup-dropdown">
@@ -759,19 +722,33 @@
         <div class="phone-gallery" style="margin-top: 20px;">
           <div class="phone-frame-wrap">
             <div class="phone-label">Walkthrough</div>
-            <div class="phone-frame">
-              <video autoplay muted loop playsinline>
-                <source src="ios-demo.mp4" type="video/mp4">
-              </video>
+            <div class="device device-iphone-14-pro phone-device">
+              <div class="device-frame">
+                <video class="device-screen" autoplay muted loop playsinline>
+                  <source src="ios-demo.mp4" type="video/mp4">
+                </video>
+              </div>
+              <div class="device-stripe"></div>
+              <div class="device-header"></div>
+              <div class="device-sensors"></div>
+              <div class="device-btns"></div>
+              <div class="device-power"></div>
             </div>
           </div>
           <div class="phone-frame-wrap">
             <div class="phone-label">Auth</div>
-            <div class="phone-frame">
-              <picture>
-                <source srcset="auth-light.png" media="(prefers-color-scheme: light)">
-                <img src="auth-dark.png" alt="Web Finder iOS OAuth setup screen">
-              </picture>
+            <div class="device device-iphone-14-pro phone-device">
+              <div class="device-frame">
+                <picture class="device-screen">
+                  <source srcset="auth-light.png" media="(prefers-color-scheme: light)">
+                  <img class="device-screen" src="auth-dark.png" alt="Web Finder iOS OAuth setup screen">
+                </picture>
+              </div>
+              <div class="device-stripe"></div>
+              <div class="device-header"></div>
+              <div class="device-sensors"></div>
+              <div class="device-btns"></div>
+              <div class="device-power"></div>
             </div>
           </div>
         </div>
