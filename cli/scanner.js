@@ -91,27 +91,54 @@ const MAC_ONLY_SERVICES = {
   5000: 'AirPlay',
 };
 
-/** Try http then https (or https first for known HTTPS ports); return { title, url, redirected } or null. */
+// Ports that serve APIs/protocols, not web UIs (hidden unless --all)
+const NON_WEB_PORTS = new Set([11434]); // Ollama API
+const DARWIN_NON_WEB_PORTS = new Set([5000]); // AirPlay Receiver
+
+function isMacOS(os) {
+  if (!os) return false;
+  const lower = os.toLowerCase();
+  return lower === 'darwin' || lower === 'macos';
+}
+
+/** Try http then https (or https first for known HTTPS ports).
+ *  Returns { title, url } or null.
+ *  Shows ports with HTML but no <title> (SPAs, auth pages) using fallback names. */
 async function fetchService(host, port, { isDarwin = false, showAll = false } = {}) {
   const schemes = HTTPS_FIRST_PORTS.has(port) ? ['https', 'http'] : ['http', 'https'];
+  let openPortUrl = null;
+
   for (const scheme of schemes) {
-    const url   = `${scheme}://${host}:${port}`;
+    const url    = `${scheme}://${host}:${port}`;
     const result = await fetchWithRedirect(url);
-    if (!result) continue;
-    if (result.redirectPort && result.redirectPort !== port) {
-      // This port redirects to another port on the same host - skip it
-      return null;
-    }
+    if (!result) continue;  // connection failed, try next scheme
+    if (result.redirectPort && result.redirectPort !== port) return null;
     if (result.title) return { title: result.title, url: result.url || url };
+    // Port is open but no title - remember URL for fallback
+    if (result.noTitle) openPortUrl = openPortUrl || result.url;
+    if (result.responded) openPortUrl = openPortUrl || url;
   }
-  // No HTML title - only show with showAll
+
+  // Port open but no <title> (SPA, auth-protected, API endpoint)
+  if (openPortUrl) {
+    const lookup = isDarwin ? { ...KNOWN_SERVICES, ...MAC_ONLY_SERVICES } : KNOWN_SERVICES;
+    return { title: lookup[port] ?? `Port ${port}`, url: openPortUrl };
+  }
+
+  // Port closed - only show with --all
   if (!showAll) return null;
   const lookup = isDarwin ? { ...KNOWN_SERVICES, ...MAC_ONLY_SERVICES } : KNOWN_SERVICES;
   const scheme = HTTPS_FIRST_PORTS.has(port) ? 'https' : 'http';
   return { title: lookup[port] ?? `Port ${port}`, url: `${scheme}://${host}:${port}` };
 }
 
-/** Fetch URL, detect redirects to different ports on same host. */
+/** Fetch URL, detect redirects to different ports on same host.
+ *  Returns:
+ *    { title, url }        - found HTML <title>
+ *    { redirectPort }      - redirect to different port
+ *    { noTitle: true, url } - HTTP 200 with HTML but no <title> (SPA/auth page)
+ *    { responded: true }   - port open but non-HTML or HTTP 4xx/5xx
+ *    null                  - connection failed (port closed/timeout) */
 function fetchWithRedirect(urlStr) {
   return new Promise((resolve) => {
     const mod = urlStr.startsWith('https') ? https : http;
@@ -119,6 +146,19 @@ function fetchWithRedirect(urlStr) {
     let settled = false;
     const done = (val) => { if (!settled) { settled = true; resolve(val); } };
     const srcUrl = new URL(urlStr);
+
+    const finalize = () => {
+      const m = buf.match(/<title[^>]*>([^<]*)<\/title>/i);
+      if (m) {
+        const title = cleanTitle(decodeEntities(m[1].trim()));
+        done(title ? { title, url: urlStr } : { noTitle: true, url: urlStr });
+        return;
+      }
+      const lower = buf.substring(0, 2000).toLowerCase();
+      const isHTML = lower.includes('<html') || lower.includes('<!doctype') ||
+                     lower.includes('<head') || lower.includes('<body');
+      done(isHTML ? { noTitle: true, url: urlStr } : { responded: true });
+    };
 
     const req = mod.get(urlStr, {
       timeout: HTTP_TIMEOUT,
@@ -137,15 +177,20 @@ function fetchWithRedirect(urlStr) {
           }
         } catch {}
       }
-      if (res.statusCode >= 400) { res.destroy(); done(null); return; }
+      if (res.statusCode >= 400) { res.destroy(); done({ responded: true }); return; }
 
       res.on('data', (chunk) => {
         buf += chunk;
-        if (buf.length > READ_LIMIT) { req.destroy(); }
         const m = buf.match(/<title[^>]*>([^<]*)<\/title>/i);
-        if (m) { req.destroy(); done({ title: cleanTitle(decodeEntities(m[1].trim())) || null, url: urlStr }); }
+        if (m) {
+          const title = cleanTitle(decodeEntities(m[1].trim()));
+          req.destroy();
+          done(title ? { title, url: urlStr } : { noTitle: true, url: urlStr });
+          return;
+        }
+        if (buf.length > READ_LIMIT) { req.destroy(); finalize(); }
       });
-      res.on('end', () => done(null));
+      res.on('end', finalize);
     });
     req.on('error',   () => done(null));
     req.on('timeout', () => { req.destroy(); done(null); });
@@ -173,14 +218,23 @@ function decodeEntities(str) {
     .replace(/&#160;/g, ' ');
 }
 
-/** Remove HTTP port when HTTPS counterpart exists on same host (redirect or same content). */
+/** Remove HTTP port when HTTPS counterpart exists, and clean up generic "Port X" entries. */
 function dedup(services) {
-  const pairs = [[80, 443], [8080, 8443]];
+  const pairs = [[80, 443], [5000, 5001], [8080, 8443]];
   const skip = new Set();
   for (const [httpPort, httpsPort] of pairs) {
-    const httpSvc  = services.find(s => s.port === httpPort);
-    const httpsSvc = services.find(s => s.port === httpsPort);
-    if (httpSvc && httpsSvc) skip.add(httpPort);
+    if (services.find(s => s.port === httpPort) && services.find(s => s.port === httpsPort)) {
+      skip.add(httpPort);
+    }
+  }
+  // Remove generic "Port X" entries for common redirect ports when real titles exist
+  const hasRealTitle = services.some(s => !s.title.startsWith('Port '));
+  if (hasRealTitle) {
+    for (const s of services) {
+      if (s.title.startsWith('Port ') && (s.port === 80 || s.port === 443)) {
+        skip.add(s.port);
+      }
+    }
   }
   return services.filter(s => !skip.has(s.port));
 }
@@ -216,12 +270,22 @@ async function scanLocal({ showAll = false } = {}) {
     if (hints[port]) {
       return { title: hints[port], host: '127.0.0.1', port, url: `http://127.0.0.1:${port}` };
     }
-    const svc = await fetchService('127.0.0.1', port, { isDarwin: true, showAll });
+    const isDarwin = process.platform === 'darwin';
+    const svc = await fetchService('127.0.0.1', port, { isDarwin, showAll });
     if (!svc) return null;
     return { title: svc.title, host: '127.0.0.1', port, url: svc.url };
   }));
 
-  return dedup(services.filter(Boolean));
+  let result = dedup(services.filter(Boolean));
+  if (!showAll) {
+    const isDarwin = process.platform === 'darwin';
+    result = result.filter(s => {
+      if (NON_WEB_PORTS.has(s.port)) return false;
+      if (isDarwin && DARWIN_NON_WEB_PORTS.has(s.port)) return false;
+      return true;
+    });
+  }
+  return result;
 }
 
 // ---- gateway scan -----------------------------------------------------------
@@ -256,12 +320,18 @@ async function scanGateway({ showAll = false } = {}) {
 
   const found = dedup(services.filter(Boolean));
   if (found.length === 0) return null;
-  // Detect hardware model (e.g. "UniFi Express") then fall back to page title, ISP, etc.
+  // Detect hardware model (e.g. "UniFi Express") then fall back to ISP, page title, etc.
   const model = await detectUnifiModel(ip);
-  const title = found[0]?.title;
   const isp = await getISPName();
-  const name = model || title || (isp ? `${isp} Modem` : 'Gateway');
-  return { name, ip, services: found };
+  const realTitle = found.find(s => !s.title.startsWith('Port ') && s.title !== 'Admin Page')?.title;
+  const name = model || (isp ? `${isp} Modem` : null) || realTitle || 'Gateway';
+  // For UniFi devices, only keep port 443 (port 80 redirects, 8080 is device inform)
+  let finalServices = found;
+  if (model) {
+    const filtered = found.filter(s => s.port === 443);
+    finalServices = filtered.length > 0 ? filtered : found;
+  }
+  return { name, ip, services: finalServices };
 }
 
 /** Detect UniFi hardware model from UNIFI_OS_MANIFEST in the gateway page. */
@@ -346,14 +416,22 @@ async function scanTailscale({ showAll = false } = {}) {
 
     // Scan using IP (fast), build URLs with MagicDNS name (valid HTTPS certs)
     const openPorts = await scanPorts(peer.ip);
+    const isDarwin = isMacOS(peer.os);
     const services  = await Promise.all(openPorts.map(async (port) => {
-      const isDarwin = (peer.os || '').toLowerCase() === 'darwin';
       const svc = await fetchService(peer.dnsName, port, { isDarwin, showAll });
       if (!svc) return null;
       return { title: svc.title, port, url: svc.url };
     }));
 
-    return { ...peer, services: dedup(services.filter(Boolean)) };
+    let result = dedup(services.filter(Boolean));
+    if (!showAll) {
+      result = result.filter(s => {
+        if (NON_WEB_PORTS.has(s.port)) return false;
+        if (isDarwin && DARWIN_NON_WEB_PORTS.has(s.port)) return false;
+        return true;
+      });
+    }
+    return { ...peer, services: result };
   }));
 
   return { peers: scanned };

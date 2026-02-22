@@ -85,7 +85,7 @@ async function main() {
   }
 
   if (result.gateway) {
-    console.log('\nGateway:');
+    console.log(`\n${result.gateway.name}:`);
     for (const s of result.gateway.services) {
       console.log(`  \u25CF  ${pad(s.title, 28)} ${s.url}`);
     }
