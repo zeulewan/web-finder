@@ -493,6 +493,64 @@
       .cli-row .cmd-text { min-width: unset; }
     }
 
+    /* ---- FAQ ---- */
+    .faq-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .faq-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      transition: border-color 0.3s;
+    }
+    .faq-item:hover {
+      border-color: var(--border-lt);
+    }
+    .faq-item[open] {
+      border-color: var(--border-lt);
+    }
+    .faq-item summary {
+      padding: 18px 22px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      transition: color 0.2s;
+    }
+    .faq-item summary::-webkit-details-marker { display: none; }
+    .faq-item summary::after {
+      content: '+';
+      font-size: 18px;
+      font-weight: 400;
+      color: var(--text-faint);
+      flex-shrink: 0;
+      transition: transform 0.2s;
+    }
+    .faq-item[open] summary::after {
+      content: '\2212';
+    }
+    .faq-item summary:hover { color: var(--cyan); }
+    .faq-answer {
+      padding: 0 22px 18px;
+      font-size: 13px;
+      color: var(--text-dim);
+      line-height: 1.65;
+    }
+    .faq-answer code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      color: var(--text);
+      background: var(--border);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+
     /* ---- FOOTER ---- */
     footer {
       border-top: 1px solid var(--border);
@@ -896,6 +954,49 @@
       <span class="cmd-text">web-finder --local --json</span>
       <span class="desc">Local only, JSON - great for agents</span>
     </div>
+  </div>
+</div>
+
+<!-- FAQ -->
+<div class="content-section fade-up" id="faq">
+  <h2>FAQ</h2>
+  <p class="section-sub">Common questions about Web Finder.</p>
+
+  <div class="faq-list">
+    <details class="faq-item">
+      <summary>Is Web Finder free?</summary>
+      <div class="faq-answer">Yes, completely. There are no in-app purchases, subscriptions, or ads. The app is open source under the MIT License and available on <a href="https://github.com/zeulewan/web-finder">GitHub</a>.</div>
+    </details>
+
+    <details class="faq-item">
+      <summary>Do I need a paid Tailscale account?</summary>
+      <div class="faq-answer">No. Web Finder works with free personal Tailscale accounts. You just need to create an OAuth client with the <strong>Devices: Read</strong> scope, which is available to all Tailscale users.</div>
+    </details>
+
+    <details class="faq-item">
+      <summary>Does it work without Tailscale?</summary>
+      <div class="faq-answer">Yes, on macOS and Linux. Use <code>web-finder --local</code> on the CLI or the macOS menubar app to discover web services running on your machine. Tailscale is only needed for scanning remote peers. Local-only scanning on iOS is not yet available but is planned for a future update.</div>
+    </details>
+
+    <details class="faq-item">
+      <summary>What ports does Web Finder scan?</summary>
+      <div class="faq-answer">It scans 30+ common web ports including 80, 443, 3000-3001, 4000-4001, 5000-5001, 6006, 7860, 8000-8005, 8080-8082, 8443, 8888, 9000-9001, 9090, and 9443. Use <code>--all</code> to also include non-web ports like SSH and AirPlay.</div>
+    </details>
+
+    <details class="faq-item">
+      <summary>Is my data sent to any servers?</summary>
+      <div class="faq-answer">No. OAuth credentials are stored locally on your device. The app only connects to <code>api.tailscale.com</code> to fetch your device list using your own credentials. There is no analytics, tracking, or telemetry of any kind.</div>
+    </details>
+
+    <details class="faq-item">
+      <summary>What is an OAuth client and how do I create one?</summary>
+      <div class="faq-answer">An OAuth client lets Web Finder read your Tailscale device list. Go to the <a href="https://login.tailscale.com/admin/settings/oauth" target="_blank">Tailscale admin console</a>, create a new OAuth client, select the <strong>Devices: Read</strong> scope, and copy the Client ID and Secret into the app. It takes about 30 seconds and only needs to be done once.</div>
+    </details>
+
+    <details class="faq-item">
+      <summary>Which platforms are supported?</summary>
+      <div class="faq-answer">iOS (iPhone and iPad), macOS (native menubar app + CLI), and Linux (CLI). The macOS and Linux CLI are installed with a single shell command and work identically on both platforms.</div>
+    </details>
   </div>
 </div>
 
