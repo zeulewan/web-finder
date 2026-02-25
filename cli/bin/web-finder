@@ -12,12 +12,33 @@
 
 const path = require('path');
 const fs   = require('fs');
+const { execSync } = require('child_process');
 
 // Resolve symlinks so scanner.js is found even when binary is symlinked to /usr/local/bin
-const realBin = fs.realpathSync(__filename);
-const { scanLocal, scanTailscale, scanGateway } = require(path.join(path.dirname(realBin), '..', 'scanner.js'));
+const realBin  = fs.realpathSync(__filename);
+const repoRoot = path.join(path.dirname(realBin), '..');
+const { scanLocal, scanTailscale, scanGateway } = require(path.join(repoRoot, 'scanner.js'));
+
+const pkg  = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
 
 const args = process.argv.slice(2);
+
+if (args.includes('--version') || args.includes('-v')) {
+  console.log(pkg.version);
+  process.exit(0);
+}
+
+if (args.includes('--update') || args.includes('-u')) {
+  console.log('Updating web-finder...');
+  try {
+    const out = execSync('git pull --ff-only', { cwd: repoRoot, encoding: 'utf8' });
+    process.stdout.write(out);
+  } catch (e) {
+    console.error('Update failed:', e.message);
+    process.exit(1);
+  }
+  process.exit(0);
+}
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
@@ -28,6 +49,8 @@ Options:
   --tailscale, -t   Scan Tailscale peers only
   --all, -a         Show all open ports (including non-web)
   --json, -j        Output as JSON (for scripts/agents)
+  --update, -u      Pull latest version from GitHub
+  --version, -v     Show version
   --help, -h        Show this help
 
 By default, only shows ports with a web interface.
