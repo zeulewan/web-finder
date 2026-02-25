@@ -42,18 +42,24 @@ if (args.includes('--update') || args.includes('-u')) {
 
   // On macOS, also update the desktop app if installed
   if (process.platform === 'darwin' && fs.existsSync('/Applications/WebFinder.app')) {
-    const appUrl = 'https://github.com/zeulewan/web-finder/releases/latest/download/WebFinder.app.zip';
-    const tmpZip = path.join(repoRoot, 'WebFinder.app.zip');
-    console.log('Updating WebFinder.app...');
     try {
-      execSync(`curl -fsSL -o "${tmpZip}" "${appUrl}"`, { encoding: 'utf8' });
-      execSync(`sudo rm -rf /Applications/WebFinder.app && sudo unzip -q "${tmpZip}" -d /Applications/`, { stdio: 'inherit' });
-      execSync(`sudo xattr -dr com.apple.quarantine /Applications/WebFinder.app 2>/dev/null || true`, { encoding: 'utf8' });
-      fs.unlinkSync(tmpZip);
-      console.log('WebFinder.app updated.');
+      const installed = execSync('defaults read /Applications/WebFinder.app/Contents/Info.plist CFBundleShortVersionString', { encoding: 'utf8' }).trim();
+      const redirect = execSync('curl -sI -o /dev/null -w "%{url_effective}" -L https://github.com/zeulewan/web-finder/releases/latest', { encoding: 'utf8' }).trim();
+      const latest = redirect.match(/\/tag\/v?(.+)$/)?.[1] || '';
+      if (installed === latest) {
+        console.log(`WebFinder.app already up to date (${installed}).`);
+      } else {
+        const appUrl = 'https://github.com/zeulewan/web-finder/releases/latest/download/WebFinder.app.zip';
+        const tmpZip = path.join(repoRoot, 'WebFinder.app.zip');
+        console.log(`Updating WebFinder.app ${installed} -> ${latest}...`);
+        execSync(`curl -fsSL -o "${tmpZip}" "${appUrl}"`, { encoding: 'utf8' });
+        execSync(`sudo rm -rf /Applications/WebFinder.app && sudo unzip -q "${tmpZip}" -d /Applications/`, { stdio: 'inherit' });
+        execSync(`sudo xattr -dr com.apple.quarantine /Applications/WebFinder.app 2>/dev/null || true`, { encoding: 'utf8' });
+        fs.unlinkSync(tmpZip);
+        console.log('WebFinder.app updated.');
+      }
     } catch (e) {
       console.error('App update failed:', e.message);
-      try { fs.unlinkSync(tmpZip); } catch {}
     }
   }
 
