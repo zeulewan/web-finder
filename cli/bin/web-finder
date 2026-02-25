@@ -31,7 +31,7 @@ if (args.includes('--version') || args.includes('-v')) {
 }
 
 if (args.includes('--update') || args.includes('-u')) {
-  console.log('Updating web-finder...');
+  console.log('Updating web-finder CLI...');
   try {
     const out = execSync('git pull --ff-only', { cwd: repoRoot, encoding: 'utf8' });
     process.stdout.write(out);
@@ -39,6 +39,24 @@ if (args.includes('--update') || args.includes('-u')) {
     console.error('Update failed:', e.message);
     process.exit(1);
   }
+
+  // On macOS, also update the desktop app if installed
+  if (process.platform === 'darwin' && fs.existsSync('/Applications/WebFinder.app')) {
+    const appUrl = 'https://github.com/zeulewan/web-finder/releases/latest/download/WebFinder.app.zip';
+    const tmpZip = path.join(repoRoot, 'WebFinder.app.zip');
+    console.log('Updating WebFinder.app...');
+    try {
+      execSync(`curl -fsSL -o "${tmpZip}" "${appUrl}"`, { encoding: 'utf8' });
+      execSync(`sudo rm -rf /Applications/WebFinder.app && sudo unzip -q "${tmpZip}" -d /Applications/`, { stdio: 'inherit' });
+      execSync(`sudo xattr -dr com.apple.quarantine /Applications/WebFinder.app 2>/dev/null || true`, { encoding: 'utf8' });
+      fs.unlinkSync(tmpZip);
+      console.log('WebFinder.app updated.');
+    } catch (e) {
+      console.error('App update failed:', e.message);
+      try { fs.unlinkSync(tmpZip); } catch {}
+    }
+  }
+
   process.exit(0);
 }
 
