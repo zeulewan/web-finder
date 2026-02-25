@@ -1,15 +1,8 @@
 {
-  "name": "zensical-scanner",
+  "name": "web-finder",
   "version": "1.1.0",
-  "description": "Scan for Zensical servers locally and across Tailscale",
-  "main": "main.js",
+  "description": "Scan your local network and Tailscale peers for web interfaces",
   "bin": {
-    "zensical-scan": "./bin/zensical-scan"
-  },
-  "scripts": {
-    "start": "electron ."
-  },
-  "devDependencies": {
-    "electron": "^33.0.0"
+    "web-finder": "./bin/web-finder"
   }
 }

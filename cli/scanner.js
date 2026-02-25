@@ -253,7 +253,7 @@ async function scanLocal({ showAll = false } = {}) {
   const pgrepOut = await execPromise('pgrep -fl zensical 2>/dev/null');
   if (pgrepOut) {
     for (const line of pgrepOut.split('\n')) {
-      if (!line.includes('serve') || line.includes('grep')) continue;
+      if (!line.includes('serve')) continue;
       const devAddr  = line.match(/--dev-addr\s+[\d.]+:(\d+)/);
       const portFlag = line.match(/(?:--port|-p)\s+(\d+)/);
       const port     = devAddr ? parseInt(devAddr[1]) : portFlag ? parseInt(portFlag[1]) : 8000;

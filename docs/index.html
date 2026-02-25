@@ -1013,14 +1013,30 @@
 
 <script>
   function copy(btn, text) {
-    navigator.clipboard.writeText(text).then(() => {
+    const succeed = () => {
       btn.textContent = 'Copied!';
       btn.classList.add('copied');
       setTimeout(() => {
         btn.textContent = 'Copy';
         btn.classList.remove('copied');
       }, 2000);
-    });
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(succeed).catch(() => fallbackCopy(text, succeed));
+    } else {
+      fallbackCopy(text, succeed);
+    }
+  }
+
+  function fallbackCopy(text, succeed) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { if (document.execCommand('copy')) succeed(); } catch {}
+    document.body.removeChild(ta);
   }
 
   // Scroll-triggered fade-in
