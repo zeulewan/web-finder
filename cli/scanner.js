@@ -418,7 +418,9 @@ async function scanTailscale({ showAll = false } = {}) {
     const openPorts = await scanPorts(peer.ip);
     const isDarwin = isMacOS(peer.os);
     const services  = await Promise.all(openPorts.map(async (port) => {
-      const svc = await fetchService(peer.dnsName, port, { isDarwin, showAll });
+      // Try MagicDNS name first (valid HTTPS certs); fall back to IP if DNS doesn't resolve
+      let svc = await fetchService(peer.dnsName, port, { isDarwin, showAll });
+      if (!svc && peer.ip !== peer.dnsName) svc = await fetchService(peer.ip, port, { isDarwin, showAll });
       if (!svc) return null;
       return { title: svc.title, port, url: svc.url };
     }));
