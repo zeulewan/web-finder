@@ -24,7 +24,9 @@ const pkg  = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'ut
 const args = process.argv.slice(2);
 
 if (args.includes('--version') || args.includes('-v')) {
-  console.log(pkg.version);
+  let commit = '';
+  try { commit = execSync('git rev-parse --short HEAD', { cwd: repoRoot, encoding: 'utf8' }).trim(); } catch {}
+  console.log(commit ? `${pkg.version} (${commit})` : pkg.version);
   process.exit(0);
 }
 
