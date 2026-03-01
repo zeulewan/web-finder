@@ -279,7 +279,8 @@ enum Scanner {
                                       os: peer.os, online: false, services: [])
                     }
                     // Scan using IP (fast), but build URLs with MagicDNS name (for valid HTTPS certs)
-                    let openPorts = await tcpScanPorts(host: peer.ip)
+                    // Batch port scans to avoid flooding mobile WireGuard tunnels
+                    let openPorts = await tcpScanPorts(host: peer.ip, batchSize: 5)
                     let services  = await fetchServices(host: peer.dnsName, ports: openPorts, hints: [:], os: peer.os, showAll: showAll)
                     return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
                                   os: peer.os, online: true, services: services)
@@ -296,9 +297,29 @@ enum Scanner {
 
     // MARK: - Port scanning
 
-    static func tcpScanPorts(host: String, ports portsToScan: [Int]? = nil) async -> [Int] {
-        await withTaskGroup(of: (Int, Bool).self) { group in
-            for port in portsToScan ?? ports {
+    static func tcpScanPorts(host: String, ports portsToScan: [Int]? = nil, batchSize: Int = 0) async -> [Int] {
+        let allPorts = portsToScan ?? ports
+        if batchSize > 0 {
+            var open: [Int] = []
+            for batchStart in stride(from: 0, to: allPorts.count, by: batchSize) {
+                let batchEnd = min(batchStart + batchSize, allPorts.count)
+                let batch = Array(allPorts[batchStart..<batchEnd])
+                let batchResults = await withTaskGroup(of: (Int, Bool).self) { group in
+                    for port in batch {
+                        group.addTask { (port, await tcpCheck(host: host, port: port)) }
+                    }
+                    var results: [Int] = []
+                    for await (port, isOpen) in group {
+                        if isOpen { results.append(port) }
+                    }
+                    return results
+                }
+                open.append(contentsOf: batchResults)
+            }
+            return open.sorted()
+        }
+        return await withTaskGroup(of: (Int, Bool).self) { group in
+            for port in allPorts {
                 group.addTask { (port, await tcpCheck(host: host, port: port)) }
             }
             var open: [Int] = []
