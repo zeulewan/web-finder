@@ -65,6 +65,19 @@ async function scanPorts(host, ports = SCAN_PORTS) {
   return checks.filter(c => c.open).map(c => c.port);
 }
 
+// Batched port scan for mobile/VPN peers — avoids flooding WireGuard tunnels
+async function scanPortsBatched(host, ports = SCAN_PORTS, batchSize = 5) {
+  const results = [];
+  for (let i = 0; i < ports.length; i += batchSize) {
+    const batch = ports.slice(i, i + batchSize);
+    const checks = await Promise.all(
+      batch.map(port => checkPort(host, port).then(open => ({ port, open })))
+    );
+    results.push(...checks);
+  }
+  return results.filter(c => c.open).map(c => c.port);
+}
+
 
 const HTTPS_FIRST_PORTS = new Set([443, 3460, 8443, 9443]);
 
@@ -415,7 +428,8 @@ async function scanTailscale({ showAll = false } = {}) {
     if (!peer.online) return { ...peer, services: [] };
 
     // Scan using IP (fast), build URLs with MagicDNS name (valid HTTPS certs)
-    const openPorts = await scanPorts(peer.ip);
+    // Use batched scanning for Tailscale peers to avoid flooding WireGuard tunnels on mobile
+    const openPorts = await scanPortsBatched(peer.ip);
     const isDarwin = isMacOS(peer.os);
     const services  = await Promise.all(openPorts.map(async (port) => {
       // Try MagicDNS name first (valid HTTPS certs); fall back to IP if DNS doesn't resolve
@@ -439,4 +453,4 @@ async function scanTailscale({ showAll = false } = {}) {
   return { peers: scanned };
 }
 
-module.exports = { scanLocal, scanTailscale, scanGateway, scanPorts, checkPort, SCAN_PORTS };
+module.exports = { scanLocal, scanTailscale, scanGateway, scanPorts, scanPortsBatched, checkPort, SCAN_PORTS };
