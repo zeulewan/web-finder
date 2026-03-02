@@ -156,6 +156,8 @@ enum Scanner {
             if let m = regex?.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
                m.numberOfRanges > 1, m.range(at: 1).location != NSNotFound {
                 hints[port] = nsLine.substring(with: m.range(at: 1))
+            } else {
+                hints[port] = "zensical"
             }
         }
         return hints
