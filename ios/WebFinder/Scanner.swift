@@ -109,19 +109,33 @@ enum Scanner {
 
     static let httpsFirstPorts: Set<Int> = [443, 3460, 8443, 9443]
 
-    // Single shared URLSession with conservative limits.
-    private static let sharedSession: URLSession = {
+    // Per-scan URLSession — created fresh for each scan and invalidated when done.
+    // This ensures connections from previous scans are properly cleaned up.
+    private static var _scanSession: URLSession?
+    
+    private static func makeScanSession() -> URLSession {
+        // Invalidate previous session to close lingering connections
+        _scanSession?.invalidateAndCancel()
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 3.0
         config.timeoutIntervalForResource = 4.0
         config.httpMaximumConnectionsPerHost = 2
-        return URLSession(configuration: config, delegate: InsecureTLSDelegate.shared, delegateQueue: nil)
-    }()
+        let session = URLSession(configuration: config, delegate: InsecureTLSDelegate.shared, delegateQueue: nil)
+        _scanSession = session
+        return session
+    }
+    
+    /// Cancel any in-progress scan by invalidating the session.
+    static func cancelScan() {
+        _scanSession?.invalidateAndCancel()
+        _scanSession = nil
+    }
 
     // MARK: - Top-level scan
 
     static func scanAll(showAll: Bool = false, onProgress: (@Sendable (Double) -> Void)? = nil, onDevice: (@Sendable (Device) -> Void)? = nil) async -> (devices: [Device], error: String?) {
         dlog("scanAll started")
+        let _ = makeScanSession()
         async let gatewayResult = scanGateway()
         dlog("calling tailscaleStatus")
         let (status, apiError) = await tailscaleStatus()
@@ -342,7 +356,8 @@ enum Scanner {
     static func detectUnifiModel(host: String) async -> String? {
         guard let url = URL(string: "https://\(host)") else { return nil }
         do {
-            let (data, response) = try await sharedSession.data(from: url)
+            let session = _scanSession ?? makeScanSession()
+            let (data, response) = try await session.data(from: url)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
             guard let html = String(data: data, encoding: .utf8) else { return nil }
             guard let start = html.range(of: "UNIFI_OS_MANIFEST") else { return nil }
@@ -362,7 +377,8 @@ enum Scanner {
     static func getISPName() async -> String? {
         guard let url = URL(string: "https://ipinfo.io/json") else { return nil }
         do {
-            let (data, _) = try await sharedSession.data(from: url)
+            let session = _scanSession ?? makeScanSession()
+            let (data, _) = try await session.data(from: url)
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let org = json["org"] as? String, !org.isEmpty else { return nil }
             return org.replacingOccurrences(of: #"^AS\d+\s+"#, with: "", options: .regularExpression)
@@ -488,7 +504,7 @@ enum Scanner {
             conn.stateUpdateHandler = { state in
                 switch state {
                 case .ready:  conn.cancel(); finish(true)
-                case .failed: finish(false)
+                case .failed: conn.cancel(); finish(false)
                 default: break
                 }
             }
@@ -716,7 +732,8 @@ enum Scanner {
 
     static func httpTitle(url: URL) async -> FetchResult {
         do {
-            let (data, response) = try await sharedSession.data(from: url)
+            let session = _scanSession ?? makeScanSession()
+            let (data, response) = try await session.data(from: url)
             guard let http = response as? HTTPURLResponse else { return .responded }
 
             // Detect redirect to a different port on the same host
