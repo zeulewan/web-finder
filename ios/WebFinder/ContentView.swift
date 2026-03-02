@@ -44,14 +44,18 @@ class ScannerModel: ObservableObject {
         devices = Self.loadCache()
     }
 
+    private var scanTask: Task<Void, Never>?
+    
     func scan() {
-        guard !scanning else { return }
+        // Cancel any in-progress scan before starting a new one
+        scanTask?.cancel()
+        Scanner.cancelScan()
         scanning = true
         scanProgress = 0
         devices = []
         scanError = nil
         ScanLog.shared.clear()
-        Task {
+        scanTask = Task {
             let (result, error) = await Scanner.scanAll(showAll: showAllPorts, onProgress: { progress in
                 Task { @MainActor in self.scanProgress = progress }
             }, onDevice: { device in
