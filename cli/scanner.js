@@ -58,18 +58,7 @@ function checkPort(host, port) {
   });
 }
 
-async function scanPorts(host, ports = SCAN_PORTS, { batchSize = 0 } = {}) {
-  if (batchSize > 0) {
-    const results = [];
-    for (let i = 0; i < ports.length; i += batchSize) {
-      const batch = ports.slice(i, i + batchSize);
-      const checks = await Promise.all(
-        batch.map(port => checkPort(host, port).then(open => ({ port, open })))
-      );
-      results.push(...checks);
-    }
-    return results.filter(c => c.open).map(c => c.port);
-  }
+async function scanPorts(host, ports = SCAN_PORTS) {
   const checks = await Promise.all(
     ports.map(port => checkPort(host, port).then(open => ({ port, open })))
   );
@@ -426,8 +415,7 @@ async function scanTailscale({ showAll = false } = {}) {
     if (!peer.online) return { ...peer, services: [] };
 
     // Scan using IP (fast), build URLs with MagicDNS name (valid HTTPS certs)
-    // Batch port scans for Tailscale peers to avoid flooding mobile WireGuard tunnels
-    const openPorts = await scanPorts(peer.ip, SCAN_PORTS, { batchSize: 5 });
+    const openPorts = await scanPorts(peer.ip);
     const isDarwin = isMacOS(peer.os);
     const services  = await Promise.all(openPorts.map(async (port) => {
       // Try MagicDNS name first (valid HTTPS certs); fall back to IP if DNS doesn't resolve
