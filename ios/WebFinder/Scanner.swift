@@ -219,6 +219,7 @@ enum Scanner {
             for await d in group {
                 results.append(d)
                 running -= 1
+                if Task.isCancelled { group.cancelAll(); break }
                 onProgress?(Double(results.count) / Double(totalPeers))
                 onDevice?(d)
                 if addNext() { running += 1 }
@@ -549,6 +550,9 @@ enum Scanner {
             warmupSession.invalidateAndCancel()
         }
 
+        // Brief pause after warmup to let the WireGuard tunnel stabilize
+        try? await Task.sleep(nanoseconds: 200_000_000)  // 200ms
+
         // Ports we want extra diagnostics for when they fail
         let debugPorts: Set<Int> = [443, 3460, 5001]
 
@@ -580,9 +584,10 @@ enum Scanner {
                 running += 1
             }
 
-            // As each completes, start the next
+            // As each completes, start the next (stop if scan was cancelled)
             for await s in group {
                 running -= 1
+                if Task.isCancelled { group.cancelAll(); break }
                 if let s { services.append(s) }
                 if let port = portIterator.next() {
                     probePort(port)
