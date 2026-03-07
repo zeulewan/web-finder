@@ -1,4 +1,13 @@
 import SwiftUI
+import SafariServices
+
+// MARK: - Safari in-app browser
+
+struct SafariView: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> SFSafariViewController { SFSafariViewController(url: url) }
+    func updateUIViewController(_ vc: SFSafariViewController, context: Context) {}
+}
 
 // MARK: - View model
 
@@ -9,6 +18,7 @@ class ScannerModel: ObservableObject {
     @Published var scanProgress: Double = 0
     @Published var lastScan: Date?
     @Published var scanError: String?
+    @Published var demoMode = false
     @Published var showAllPorts = false {
         didSet { UserDefaults.standard.set(showAllPorts, forKey: "showAllPorts") }
     }
@@ -22,12 +32,21 @@ class ScannerModel: ObservableObject {
         didSet { UserDefaults.standard.set(minimalMode, forKey: "minimalMode") }
     }
 
-    var needsSetup: Bool { scanError == "NO_CREDENTIALS" }
+    var needsSetup: Bool { scanError == "NO_CREDENTIALS" && !demoMode }
     var invalidCreds: Bool { scanError == "INVALID_CREDENTIALS" }
     var isConfigured: Bool {
+        if demoMode { return true }
         let id = UserDefaults.standard.string(forKey: "tsClientID") ?? ""
         let secret = UserDefaults.standard.string(forKey: "tsClientSecret") ?? ""
         return !id.isEmpty && !secret.isEmpty
+    }
+
+    func loadDemo() {
+        demoMode = true
+        devices = Scanner.demoDevices()
+        scanError = nil
+        lastScan = Date()
+        scanning = false
     }
 
     init() {
@@ -47,6 +66,7 @@ class ScannerModel: ObservableObject {
     private var scanTask: Task<Void, Never>?
     
     func scan() {
+        if demoMode { return }
         // Cancel any in-progress scan before starting a new one
         scanTask?.cancel()
         Scanner.cancelScan()
@@ -145,6 +165,24 @@ struct ContentView: View {
 
     var deviceList: some View {
         List {
+            if model.demoMode {
+                Section {
+                    HStack {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(.orange)
+                        Text("Demo Mode")
+                            .font(.subheadline.bold())
+                        Spacer()
+                        Button("Connect") {
+                            model.demoMode = false
+                            model.devices = []
+                            model.scanError = "NO_CREDENTIALS"
+                        }
+                        .font(.subheadline)
+                    }
+                }
+            }
+
             if model.scanning {
                 Section {
                     ProgressView(value: model.scanProgress)
@@ -181,7 +219,7 @@ struct ContentView: View {
             } else {
                 let visible = model.showAllDevices ? model.devices : activeDevices
                 ForEach(visible) { device in
-                    DeviceSection(device: device, minimal: model.minimalMode)
+                    DeviceSection(device: device, minimal: model.minimalMode, isDemo: model.demoMode)
                 }
             }
 
@@ -203,7 +241,7 @@ struct SetupView: View {
     @EnvironmentObject private var model: ScannerModel
     @State private var clientID = ""
     @State private var clientSecret = ""
-    @Environment(\.openURL) private var openURL
+    @State private var showSafari = false
 
     static let oauthURL = URL(string: "https://login.tailscale.com/admin/settings/trust-credentials/add")!
 
@@ -241,7 +279,7 @@ struct SetupView: View {
             .padding(.horizontal)
 
             Button {
-                openURL(Self.oauthURL)
+                showSafari = true
             } label: {
                 Label("Open Tailscale OAuth", systemImage: "arrow.up.right")
                     .frame(maxWidth: .infinity)
@@ -249,6 +287,9 @@ struct SetupView: View {
             }
             .buttonStyle(.borderedProminent)
             .padding(.horizontal)
+            .sheet(isPresented: $showSafari) {
+                SafariView(url: Self.oauthURL)
+            }
 
             VStack(spacing: 10) {
                 HStack {
@@ -308,6 +349,16 @@ struct SetupView: View {
                 .padding(.horizontal)
             }
 
+            Button {
+                model.loadDemo()
+            } label: {
+                Text("Try Demo")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+            .buttonStyle(.bordered)
+            .padding(.horizontal)
+
             Spacer()
         }
         .padding()
@@ -342,9 +393,9 @@ struct SetupView: View {
 struct SettingsView: View {
     @EnvironmentObject private var model: ScannerModel
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
     @AppStorage("tsClientID") private var clientID = ""
     @AppStorage("tsClientSecret") private var clientSecret = ""
+    @State private var showSafari = false
 
     var body: some View {
         NavigationStack {
@@ -361,7 +412,10 @@ struct SettingsView: View {
                         .font(.system(.footnote, design: .monospaced))
 
                     Button("Open Tailscale OAuth") {
-                        openURL(SetupView.oauthURL)
+                        showSafari = true
+                    }
+                    .sheet(isPresented: $showSafari) {
+                        SafariView(url: SetupView.oauthURL)
                     }
                 } header: {
                     Text("Tailscale")
@@ -463,6 +517,7 @@ struct SettingsView: View {
 struct DeviceSection: View {
     let device: Device
     let minimal: Bool
+    let isDemo: Bool
 
     var body: some View {
         Section {
@@ -474,7 +529,7 @@ struct DeviceSection: View {
                     .foregroundStyle(.tertiary)
             } else {
                 ForEach(device.services) { service in
-                    ServiceRow(service: service, minimal: minimal)
+                    ServiceRow(service: service, minimal: minimal, isDemo: isDemo)
                 }
             }
         } header: {
@@ -543,11 +598,17 @@ struct DebugLogSection: View {
 struct ServiceRow: View {
     let service: WebService
     let minimal: Bool
+    let isDemo: Bool
     @Environment(\.openURL) private var openURL
+    @State private var showDemoAlert = false
 
     var body: some View {
         Button {
-            openURL(service.url)
+            if isDemo {
+                showDemoAlert = true
+            } else {
+                openURL(service.url)
+            }
         } label: {
             HStack {
                 Circle()
@@ -571,16 +632,23 @@ struct ServiceRow: View {
             }
             .foregroundColor(.primary)
         }
+        .alert("Demo Mode", isPresented: $showDemoAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Connect your Tailscale account to open services on your devices.")
+        }
         .contextMenu {
-            Button {
-                UIPasteboard.general.string = service.url.absoluteString
-            } label: {
-                Label("Copy URL", systemImage: "doc.on.doc")
-            }
-            Button {
-                openURL(service.url)
-            } label: {
-                Label("Open in Browser", systemImage: "safari")
+            if !isDemo {
+                Button {
+                    UIPasteboard.general.string = service.url.absoluteString
+                } label: {
+                    Label("Copy URL", systemImage: "doc.on.doc")
+                }
+                Button {
+                    openURL(service.url)
+                } label: {
+                    Label("Open in Browser", systemImage: "safari")
+                }
             }
         }
     }

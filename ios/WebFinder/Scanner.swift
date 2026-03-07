@@ -798,6 +798,34 @@ enum Scanner {
     }
 }
 
+// MARK: - Demo data
+
+extension Scanner {
+    static func demoDevices() -> [Device] {
+        [
+            Device(name: "workstation", ip: "100.101.214.44", isLocal: false, os: "linux", online: true, services: [
+                WebService(title: "Grafana", port: 3000, url: URL(string: "http://workstation:3000")!, isHTTPS: false),
+                WebService(title: "Prometheus", port: 9090, url: URL(string: "http://workstation:9090")!, isHTTPS: false),
+                WebService(title: "Jupyter Notebook", port: 8888, url: URL(string: "http://workstation:8888")!, isHTTPS: false),
+                WebService(title: "Portainer", port: 9443, url: URL(string: "https://workstation:9443")!, isHTTPS: true),
+            ]),
+            Device(name: "nas", ip: "100.88.12.5", isLocal: false, os: "linux", online: true, services: [
+                WebService(title: "Synology DSM", port: 5001, url: URL(string: "https://nas:5001")!, isHTTPS: true),
+                WebService(title: "Plex", port: 32400, url: URL(string: "http://nas:32400")!, isHTTPS: false),
+                WebService(title: "Jellyfin", port: 8096, url: URL(string: "http://nas:8096")!, isHTTPS: false),
+            ]),
+            Device(name: "pi-home", ip: "100.77.33.10", isLocal: false, os: "linux", online: true, services: [
+                WebService(title: "Home Assistant", port: 8123, url: URL(string: "http://pi-home:8123")!, isHTTPS: false),
+                WebService(title: "Node-RED", port: 1880, url: URL(string: "http://pi-home:1880")!, isHTTPS: false),
+            ]),
+            Device(name: "macbook", ip: "100.117.222.41", isLocal: false, os: "darwin", online: true, services: [
+                WebService(title: "Dev Server", port: 5173, url: URL(string: "http://macbook:5173")!, isHTTPS: false),
+            ]),
+            Device(name: "cloud-vm", ip: "100.64.1.22", isLocal: false, os: "linux", online: false, services: []),
+        ]
+    }
+}
+
 // Accepts self-signed certs (shared singleton)
 class InsecureTLSDelegate: NSObject, URLSessionDelegate {
     static let shared = InsecureTLSDelegate()
