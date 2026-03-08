@@ -150,7 +150,7 @@ if (args.includes('--update') || args.includes('-u')) {
       } else {
         const appUrl = 'https://github.com/zeulewan/web-finder/releases/latest/download/WebFinder.app.zip';
         const tmpZip = path.join(repoRoot, 'WebFinder.app.zip');
-        const destDir = fs.existsSync(userApps) ? path.join(os.homedir(), 'Applications') : path.join(os.homedir(), 'Applications');
+        const destDir = fs.existsSync(sysApps) ? '/Applications' : path.join(os.homedir(), 'Applications');
         console.log(`Updating WebFinder.app ${installed} -> ${latest}...`);
         execSync(`curl -fsSL -o "${tmpZip}" "${appUrl}"`, { encoding: 'utf8' });
         fs.mkdirSync(destDir, { recursive: true });
