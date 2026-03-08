@@ -326,16 +326,10 @@ enum Scanner {
                         return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
                                       os: peer.os, online: false, services: [])
                     }
-                    // Try manifest first — fast, no port scanning needed
-                    if let manifestServices = await fetchManifest(ip: peer.ip) {
-                        return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
-                                      os: peer.os, online: true, services: manifestServices)
-                    }
-                    // Fall back to port scanning — scan using IP (fast), build URLs with MagicDNS (valid HTTPS certs)
-                    let openPorts = await tcpScanPorts(host: peer.ip)
-                    let services  = await fetchServices(host: peer.dnsName, ports: openPorts, hints: [:], os: peer.os, showAll: showAll)
+                    // Use manifest — peers without web-finder serve show no services
+                    let manifestServices = await fetchManifest(ip: peer.ip) ?? []
                     return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
-                                  os: peer.os, online: true, services: services)
+                                  os: peer.os, online: true, services: manifestServices)
                 }
             }
             var results: [Device] = []

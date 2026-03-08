@@ -432,26 +432,12 @@ async function scanTailscale({ showAll = false } = {}) {
   const scanned = await Promise.all(peers.map(async (peer) => {
     if (!peer.online) return { ...peer, services: [] };
 
-    // Try manifest server first — instant, no port scan needed
+    // Use manifest — peers without web-finder serve show no services
+    const isDarwin  = isMacOS(peer.os);
     const manifest = await fetchManifest(peer.ip);
-    if (manifest && Array.isArray(manifest.services)) {
-      const services = manifest.services
-        .filter(s => s.port && s.url)
-        .map(s => ({ title: s.name || `Port ${s.port}`, port: s.port, url: s.url }));
-      return { ...peer, services };
-    }
-
-    // Fall back to port scan
-    // Use batched scanning for Tailscale peers to avoid flooding WireGuard tunnels on mobile
-    const openPorts = await scanPortsBatched(peer.ip);
-    const isDarwin = isMacOS(peer.os);
-    const services  = await Promise.all(openPorts.map(async (port) => {
-      // Try MagicDNS name first (valid HTTPS certs); fall back to IP if DNS doesn't resolve
-      let svc = await fetchService(peer.dnsName, port, { isDarwin, showAll });
-      if (!svc && peer.ip !== peer.dnsName) svc = await fetchService(peer.ip, port, { isDarwin, showAll });
-      if (!svc) return null;
-      return { title: svc.title, port, url: svc.url };
-    }));
+    const services = (manifest && Array.isArray(manifest.services))
+      ? manifest.services.filter(s => s.port && s.url).map(s => ({ title: s.name || `Port ${s.port}`, port: s.port, url: s.url }))
+      : [];
 
     let result = dedup(services.filter(Boolean));
     if (!showAll) {
