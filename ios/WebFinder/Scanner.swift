@@ -265,11 +265,14 @@ enum Scanner {
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let svcs = json["services"] as? [[String: Any]] else { return nil }
             return svcs.compactMap { svc -> WebService? in
-                guard let name   = svc["name"] as? String,
-                      let port   = svc["port"] as? Int,
-                      let urlStr = svc["url"]  as? String,
-                      let svcURL = URL(string: urlStr) else { return nil }
-                return WebService(title: name, port: port, url: svcURL, isHTTPS: svcURL.scheme == "https")
+                guard let name = svc["name"] as? String,
+                      let port = svc["port"] as? Int,
+                      let urlStr = svc["url"] as? String,
+                      let origURL = URL(string: urlStr) else { return nil }
+                // Rewrite localhost URLs to use peer's actual IP (manifest URLs are 127.0.0.1)
+                let scheme = origURL.scheme ?? "http"
+                guard let svcURL = URL(string: "\(scheme)://\(ip):\(port)") else { return nil }
+                return WebService(title: name, port: port, url: svcURL, isHTTPS: scheme == "https")
             }
         } catch {
             return nil

@@ -436,7 +436,18 @@ async function scanTailscale({ showAll = false } = {}) {
     const isDarwin  = isMacOS(peer.os);
     const manifest = await fetchManifest(peer.ip);
     const services = (manifest && Array.isArray(manifest.services))
-      ? manifest.services.filter(s => s.port && s.url).map(s => ({ title: s.name || `Port ${s.port}`, port: s.port, url: s.url }))
+      ? manifest.services.filter(s => s.port && s.url).map(s => {
+          // Rewrite localhost URLs to use peer's actual hostname (URLs in manifest are 127.0.0.1)
+          let url = s.url;
+          try {
+            const u = new URL(s.url);
+            if (u.hostname === '127.0.0.1' || u.hostname === 'localhost') {
+              u.hostname = peer.dnsName;
+              url = u.toString();
+            }
+          } catch {}
+          return { title: s.name || `Port ${s.port}`, port: s.port, url };
+        })
       : [];
 
     let result = dedup(services.filter(Boolean));
@@ -517,7 +528,14 @@ async function scanLocalSS({ showAll = false } = {}) {
   }));
 
   let result = dedup(services.filter(Boolean));
-  if (!showAll) result = result.filter(s => !NON_WEB_PORTS.has(s.port));
+  if (!showAll) {
+    result = result.filter(s => {
+      if (NON_WEB_PORTS.has(s.port)) return false;
+      // Exclude generic "Port N" fallbacks — no real web UI, just an open port
+      if (s.title === `Port ${s.port}`) return false;
+      return true;
+    });
+  }
   return result;
 }
 
