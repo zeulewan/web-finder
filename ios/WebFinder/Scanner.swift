@@ -257,7 +257,7 @@ enum Scanner {
     static func fetchManifest(ip: String) async -> [WebService]? {
         guard let url = URL(string: "http://\(ip):\(MANIFEST_PORT)\(MANIFEST_PATH)") else { return nil }
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 2.0
+        config.timeoutIntervalForRequest = 4.0
         let session = URLSession(configuration: config)
         do {
             let (data, response) = try await session.data(from: url)

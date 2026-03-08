@@ -546,7 +546,7 @@ async function scanLocalSS({ showAll = false } = {}) {
 function fetchManifest(ip) {
   return new Promise((resolve) => {
     const url = `http://${ip}:${MANIFEST_PORT}${MANIFEST_PATH}`;
-    const req = http.get(url, { timeout: 800 }, (res) => {
+    const req = http.get(url, { timeout: 3500 }, (res) => {
       if (res.statusCode !== 200) { res.destroy(); resolve(null); return; }
       let buf = '';
       res.on('data', (c) => { buf += c; if (buf.length > 65536) { req.destroy(); resolve(null); } });
