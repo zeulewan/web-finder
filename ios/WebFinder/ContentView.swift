@@ -528,7 +528,7 @@ struct DeviceSection: View {
                 Text("No web services")
                     .foregroundStyle(.tertiary)
             } else {
-                ForEach(device.services) { service in
+                ForEach(device.services.sorted { $0.title < $1.title }) { service in
                     ServiceRow(service: service, minimal: minimal, isDemo: isDemo)
                 }
             }
