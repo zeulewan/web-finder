@@ -183,16 +183,20 @@ function fetchWithRedirect(urlStr) {
       rejectUnauthorized: false,
       headers: { 'User-Agent': 'web-finder/1.0' },
     }, (res) => {
-      // Check for redirect to different port on same host
+      // Check for redirect
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         try {
           const loc = new URL(res.headers.location, urlStr);
           const redirPort = parseInt(loc.port) || (loc.protocol === 'https:' ? 443 : 80);
-          if (loc.hostname === srcUrl.hostname && redirPort !== parseInt(srcUrl.port || (srcUrl.protocol === 'https:' ? 443 : 80))) {
-            res.destroy();
+          const srcPort = parseInt(srcUrl.port) || (srcUrl.protocol === 'https:' ? 443 : 80);
+          res.destroy();
+          if (loc.hostname === srcUrl.hostname && redirPort !== srcPort) {
             done({ redirectPort: redirPort });
-            return;
+          } else {
+            // Same-port path redirect — follow it
+            fetchWithRedirect(loc.toString()).then(done);
           }
+          return;
         } catch {}
       }
       if (res.statusCode >= 400) { res.destroy(); done({ responded: true }); return; }
