@@ -23,6 +23,96 @@ const os   = require('os');
 
 const pkg  = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
 
+// MARK: - Autostart helpers
+
+function getAutostartInfo() {
+  const nodePath = process.execPath;
+  const binPath  = realBin;
+  if (process.platform === 'darwin') {
+    return {
+      type: 'launchd',
+      plist: path.join(os.homedir(), 'Library', 'LaunchAgents', 'com.zeul.web-finder-serve.plist'),
+      nodePath, binPath,
+    };
+  }
+  return {
+    type: 'systemd',
+    unit: path.join(os.homedir(), '.config', 'systemd', 'user', 'web-finder-serve.service'),
+    nodePath, binPath,
+  };
+}
+
+function setupAutostart() {
+  const info = getAutostartInfo();
+  try {
+    if (info.type === 'launchd') {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.zeul.web-finder-serve</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${info.nodePath}</string>
+        <string>${info.binPath}</string>
+        <string>serve</string>
+    </array>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>StandardOutPath</key><string>/tmp/web-finder-serve.log</string>
+    <key>StandardErrorPath</key><string>/tmp/web-finder-serve.log</string>
+</dict>
+</plist>`;
+      fs.mkdirSync(path.dirname(info.plist), { recursive: true });
+      fs.writeFileSync(info.plist, xml);
+      try { execSync(`launchctl unload "${info.plist}" 2>/dev/null`, { encoding: 'utf8' }); } catch {}
+      execSync(`launchctl load "${info.plist}"`, { encoding: 'utf8' });
+      console.log('Autostart enabled (LaunchAgent).');
+    } else {
+      const unit = `[Unit]
+Description=web-finder manifest server
+
+[Service]
+ExecStart=${info.nodePath} ${info.binPath} serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+`;
+      fs.mkdirSync(path.dirname(info.unit), { recursive: true });
+      fs.writeFileSync(info.unit, unit);
+      execSync('systemctl --user daemon-reload', { encoding: 'utf8' });
+      execSync('systemctl --user enable --now web-finder-serve', { encoding: 'utf8' });
+      console.log('Autostart enabled (systemd).');
+    }
+  } catch (e) {
+    console.error('Autostart setup failed:', e.message);
+  }
+}
+
+function removeAutostart() {
+  const info = getAutostartInfo();
+  try {
+    if (info.type === 'launchd') {
+      if (fs.existsSync(info.plist)) {
+        try { execSync(`launchctl unload "${info.plist}"`, { encoding: 'utf8' }); } catch {}
+        fs.unlinkSync(info.plist);
+        console.log('Autostart disabled.');
+      } else {
+        console.log('Autostart was not enabled.');
+      }
+    } else {
+      try { execSync('systemctl --user disable --now web-finder-serve', { encoding: 'utf8' }); } catch {}
+      if (fs.existsSync(info.unit)) fs.unlinkSync(info.unit);
+      try { execSync('systemctl --user daemon-reload', { encoding: 'utf8' }); } catch {}
+      console.log('Autostart disabled.');
+    }
+  } catch (e) {
+    console.error('Failed to disable autostart:', e.message);
+  }
+}
+
 const args = process.argv.slice(2);
 
 if (args.includes('--version') || args.includes('-v')) {
@@ -74,6 +164,21 @@ if (args.includes('--update') || args.includes('-u')) {
     }
   }
 
+  // Set up autostart as part of every update
+  setupAutostart();
+
+  process.exit(0);
+}
+
+if (args[0] === 'autostart') {
+  const sub = args[1];
+  if (sub === 'on' || sub === 'enable') {
+    setupAutostart();
+  } else if (sub === 'off' || sub === 'disable') {
+    removeAutostart();
+  } else {
+    console.log('Usage: web-finder autostart on|off');
+  }
   process.exit(0);
 }
 
@@ -137,6 +242,8 @@ Subcommands:
                     discover this machine's services without port scanning.
                     Default port: ${MANIFEST_PORT}. Override with --port N.
                     Endpoint: /.well-known/web-finder.json
+  autostart on      Enable serve to start automatically at login/boot
+  autostart off     Disable autostart
 
 By default, only shows ports with a web interface.
 Use --all to include non-web ports like AirPlay, SSH, etc.
