@@ -43,9 +43,16 @@ if (args.includes('--update') || args.includes('-u')) {
   }
 
   // On macOS, also update the desktop app if installed
-  if (process.platform === 'darwin' && fs.existsSync('/Applications/WebFinder.app')) {
+  if (process.platform === 'darwin') {
+    const userApps  = path.join(os.homedir(), 'Applications', 'WebFinder.app');
+    const sysApps   = '/Applications/WebFinder.app';
+    const appPath   = fs.existsSync(userApps) ? userApps : fs.existsSync(sysApps) ? sysApps : null;
+    const installDir = fs.existsSync(userApps) ? path.join(os.homedir(), 'Applications') : sysApps ? '/Applications' : path.join(os.homedir(), 'Applications');
+
     try {
-      const installed = execSync('defaults read /Applications/WebFinder.app/Contents/Info.plist CFBundleShortVersionString', { encoding: 'utf8' }).trim();
+      const installed = appPath
+        ? execSync(`defaults read "${appPath}/Contents/Info.plist" CFBundleShortVersionString`, { encoding: 'utf8' }).trim()
+        : '0';
       const redirect = execSync('curl -sI -o /dev/null -w "%{url_effective}" -L https://github.com/zeulewan/web-finder/releases/latest', { encoding: 'utf8' }).trim();
       const latest = redirect.match(/\/tag\/v?(.+)$/)?.[1] || '';
       if (installed === latest) {
@@ -53,12 +60,14 @@ if (args.includes('--update') || args.includes('-u')) {
       } else {
         const appUrl = 'https://github.com/zeulewan/web-finder/releases/latest/download/WebFinder.app.zip';
         const tmpZip = path.join(repoRoot, 'WebFinder.app.zip');
+        const destDir = fs.existsSync(userApps) ? path.join(os.homedir(), 'Applications') : path.join(os.homedir(), 'Applications');
         console.log(`Updating WebFinder.app ${installed} -> ${latest}...`);
         execSync(`curl -fsSL -o "${tmpZip}" "${appUrl}"`, { encoding: 'utf8' });
-        execSync(`sudo rm -rf /Applications/WebFinder.app && sudo unzip -q "${tmpZip}" -d /Applications/`, { stdio: 'inherit' });
-        execSync(`sudo xattr -dr com.apple.quarantine /Applications/WebFinder.app 2>/dev/null || true`, { encoding: 'utf8' });
+        fs.mkdirSync(destDir, { recursive: true });
+        execSync(`rm -rf "${path.join(destDir, 'WebFinder.app')}" && unzip -q "${tmpZip}" -d "${destDir}"`, { stdio: 'inherit' });
+        execSync(`xattr -dr com.apple.quarantine "${path.join(destDir, 'WebFinder.app')}" 2>/dev/null || true`, { encoding: 'utf8' });
         fs.unlinkSync(tmpZip);
-        console.log('WebFinder.app updated.');
+        console.log(`WebFinder.app updated in ${destDir}.`);
       }
     } catch (e) {
       console.error('App update failed:', e.message);
