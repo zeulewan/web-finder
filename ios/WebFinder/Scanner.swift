@@ -81,6 +81,7 @@ enum Scanner {
     private static let maxConcurrentPeers = 3
     private static let maxConcurrentPorts = 6
 
+    // Gateway-only port list (peers use manifest, not port scanning)
     static let ports: [Int] = [
         80, 443,
         1880,
@@ -91,9 +92,9 @@ enum Scanner {
         8000, 8001, 8002, 8003, 8004, 8005,
         8006,
         8080, 8081, 8082,
-        8096, 8123, 8443, 8888,
-        9000, 9001, 9090, 9093, 9443,
-        11434, 19999, 32400,
+        8096, 8123, 8443, 8880, 8881, 8888,
+        9000, 9001, 9090, 9093, 9321, 9443,
+        11434, 18789, 19999, 32400,
     ]
 
     static let knownServices: [Int: String] = [
@@ -101,13 +102,16 @@ enum Scanner {
         1880: "Node-RED",
         5353: "mDNS", 6006: "TensorBoard", 6052: "ESPHome",
         8006: "Proxmox", 8096: "Jellyfin", 8123: "Home Assistant",
-        9090: "Prometheus", 9093: "Alertmanager",
-        11434: "Ollama", 19999: "Netdata", 32400: "Plex",
+        9090: "Prometheus", 9093: "Alertmanager", 9321: "Web Finder",
+        11434: "Ollama", 18789: "OpenClaw", 19999: "Netdata", 32400: "Plex",
     ]
 
     static let macOnlyServices: [Int: String] = [5000: "AirPlay"]
 
-    static let httpsFirstPorts: Set<Int> = [443, 3460, 8443, 9443]
+    static let httpsFirstPorts: Set<Int> = [443, 3460, 8443, 9443, 18789]
+
+    static let MANIFEST_PORT = 9321
+    static let MANIFEST_PATH = "/.well-known/web-finder.json"
 
     // Per-scan URLSession — created fresh for each scan and invalidated when done.
     // This ensures connections from previous scans are properly cleaned up.
@@ -204,8 +208,9 @@ enum Scanner {
                         return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
                                       os: peer.os, online: false, services: [])
                     }
-                    dlog("probing \(peer.name) via \(peer.ip)...")
-                    let services = await httpProbeAllPorts(host: peer.ip, displayHost: peer.dnsName, os: peer.os, showAll: showAll)
+                    dlog("fetching manifest from \(peer.name) (\(peer.ip))...")
+                    let services = await fetchManifest(ip: peer.ip) ?? []
+                    dlog("  \(peer.name): \(services.count) services from manifest")
                     return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
                                   os: peer.os, online: true, services: services)
                 }
@@ -244,6 +249,31 @@ enum Scanner {
             return $0.name < $1.name
         }
         return (devices, nil)
+    }
+
+    // MARK: - Manifest
+
+    /// Fetch the web-finder manifest from a peer. Returns parsed services on success, nil if unavailable.
+    static func fetchManifest(ip: String) async -> [WebService]? {
+        guard let url = URL(string: "http://\(ip):\(MANIFEST_PORT)\(MANIFEST_PATH)") else { return nil }
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 2.0
+        let session = URLSession(configuration: config)
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let svcs = json["services"] as? [[String: Any]] else { return nil }
+            return svcs.compactMap { svc -> WebService? in
+                guard let name   = svc["name"] as? String,
+                      let port   = svc["port"] as? Int,
+                      let urlStr = svc["url"]  as? String,
+                      let svcURL = URL(string: urlStr) else { return nil }
+                return WebService(title: name, port: port, url: svcURL, isHTTPS: svcURL.scheme == "https")
+            }
+        } catch {
+            return nil
+        }
     }
 
     // MARK: - Tailscale OAuth API
