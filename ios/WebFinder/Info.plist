@@ -31,6 +31,8 @@
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Web Finder scans your local network and Tailscale peers to discover web interfaces.</string>
     <key>NSAppTransportSecurity</key>
