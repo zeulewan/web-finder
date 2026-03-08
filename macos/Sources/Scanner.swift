@@ -55,10 +55,13 @@ enum Scanner {
         8096,             // Jellyfin
         8123,             // Home Assistant
         8443,
+        8880, 8881,
         8888,             // Jupyter
         9000, 9001, 9090, 9093,
+        9321,             // Web Finder manifest server
         9443,
         11434,            // Ollama
+        18789,            // OpenClaw
         19999,            // Netdata
         32400,            // Plex
     ]
@@ -77,7 +80,9 @@ enum Scanner {
         8123:  "Home Assistant",
         9090:  "Prometheus",
         9093:  "Alertmanager",
+        9321:  "Web Finder",
         11434: "Ollama",
+        18789: "OpenClaw",
         19999: "Netdata",
         32400: "Plex",
     ]
@@ -121,8 +126,8 @@ enum Scanner {
         let hostname = ProcessInfo.processInfo.hostName
             .components(separatedBy: ".").first ?? "This Mac"
 
-        // Run TCP scan and process discovery in parallel
-        async let openPorts  = tcpScanPorts(host: "127.0.0.1")
+        // Use lsof for instant local port discovery instead of scanning hardcoded list
+        async let openPorts  = lsofListeningPorts()
         async let psProjects = scanLocalProcesses()
 
         let ports    = await openPorts
@@ -161,6 +166,22 @@ enum Scanner {
             }
         }
         return hints
+    }
+
+    /// Discover listening TCP ports using lsof (macOS). Much faster than scanning all ports.
+    static func lsofListeningPorts() async -> [Int] {
+        guard let out = await shell("lsof -iTCP -sTCP:LISTEN -Pn 2>/dev/null") else { return [] }
+        var ports = Set<Int>()
+        for line in out.components(separatedBy: "\n").dropFirst() {
+            let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard parts.count >= 9 else { continue }
+            let name = String(parts[parts.count - 1])
+            if let colonIdx = name.lastIndex(of: ":"),
+               let port = Int(name[name.index(after: colonIdx)...]) {
+                ports.insert(port)
+            }
+        }
+        return ports.sorted()
     }
 
     // MARK: - Gateway
@@ -236,6 +257,31 @@ enum Scanner {
         }
     }
 
+    // MARK: - Manifest
+
+    /// Fetch the web-finder manifest from a peer. Returns parsed services on success, nil if unavailable.
+    static func fetchManifest(ip: String) async -> [WebService]? {
+        guard let url = URL(string: "http://\(ip):\(MANIFEST_PORT)\(MANIFEST_PATH)") else { return nil }
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 2.0
+        let session = URLSession(configuration: config)
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let svcs = json["services"] as? [[String: Any]] else { return nil }
+            return svcs.compactMap { svc -> WebService? in
+                guard let name   = svc["name"] as? String,
+                      let port   = svc["port"] as? Int,
+                      let urlStr = svc["url"]  as? String,
+                      let svcURL = URL(string: urlStr) else { return nil }
+                return WebService(title: name, port: port, url: svcURL, isHTTPS: svcURL.scheme == "https")
+            }
+        } catch {
+            return nil
+        }
+    }
+
     // MARK: - Tailscale
 
     static func scanTailscaleDevices(showAll: Bool = false, onProgress: (@Sendable (Double) -> Void)? = nil) async -> [Device] {
@@ -280,7 +326,12 @@ enum Scanner {
                         return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
                                       os: peer.os, online: false, services: [])
                     }
-                    // Scan using IP (fast), but build URLs with MagicDNS name (for valid HTTPS certs)
+                    // Try manifest first — fast, no port scanning needed
+                    if let manifestServices = await fetchManifest(ip: peer.ip) {
+                        return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
+                                      os: peer.os, online: true, services: manifestServices)
+                    }
+                    // Fall back to port scanning — scan using IP (fast), build URLs with MagicDNS (valid HTTPS certs)
                     let openPorts = await tcpScanPorts(host: peer.ip)
                     let services  = await fetchServices(host: peer.dnsName, ports: openPorts, hints: [:], os: peer.os, showAll: showAll)
                     return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
@@ -373,7 +424,10 @@ enum Scanner {
         }
     }
 
-    static let httpsFirstPorts: Set<Int> = [443, 3460, 8443, 9443]
+    static let httpsFirstPorts: Set<Int> = [443, 3460, 8443, 9443, 18789]
+
+    static let MANIFEST_PORT = 9321
+    static let MANIFEST_PATH = "/.well-known/web-finder.json"
 
     static func fetchTitle(host: String, port: Int) async -> WebService? {
         let schemes = httpsFirstPorts.contains(port) ? ["https", "http"] : ["http", "https"]

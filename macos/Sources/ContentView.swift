@@ -72,9 +72,6 @@ struct ContentView: View {
         .onAppear {
             model.scan()
         }
-        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
-            model.scan()
-        }
     }
 
     // MARK: Header
