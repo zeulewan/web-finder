@@ -20,11 +20,14 @@ const SCAN_PORTS = [
   8096,             // Jellyfin
   8123,             // Home Assistant
   8443,
+  8880, 8881,       // Zensical
   8888,             // Jupyter
   9000, 9001,
   9090, 9093,       // Prometheus, Alertmanager
+  9321,             // Web Finder manifest server
   9443,
   11434,            // Ollama
+  18789,            // OpenClaw gateway
   19999,            // Netdata
   32400,            // Plex
 ];
@@ -79,7 +82,7 @@ async function scanPortsBatched(host, ports = SCAN_PORTS, batchSize = 5) {
 }
 
 
-const HTTPS_FIRST_PORTS = new Set([443, 3460, 8443, 9443]);
+const HTTPS_FIRST_PORTS = new Set([443, 3460, 8443, 9443, 18789]);
 
 const KNOWN_SERVICES = {
   21:    'FTP',
@@ -95,7 +98,9 @@ const KNOWN_SERVICES = {
   8123:  'Home Assistant',
   9090:  'Prometheus',
   9093:  'Alertmanager',
+  9321:  'Web Finder',
   11434: 'Ollama',
+  18789: 'OpenClaw',
   19999: 'Netdata',
   32400: 'Plex',
 };
@@ -105,7 +110,7 @@ const MAC_ONLY_SERVICES = {
 };
 
 // Ports that serve APIs/protocols, not web UIs (hidden unless --all)
-const NON_WEB_PORTS = new Set([11434]); // Ollama API
+const NON_WEB_PORTS = new Set([22, 25, 53, 111, 5353, 11434]); // SSH, SMTP, DNS, portmapper, mDNS, Ollama API
 const DARWIN_NON_WEB_PORTS = new Set([5000]); // AirPlay Receiver
 
 function isMacOS(os) {
@@ -427,7 +432,16 @@ async function scanTailscale({ showAll = false } = {}) {
   const scanned = await Promise.all(peers.map(async (peer) => {
     if (!peer.online) return { ...peer, services: [] };
 
-    // Scan using IP (fast), build URLs with MagicDNS name (valid HTTPS certs)
+    // Try manifest server first — instant, no port scan needed
+    const manifest = await fetchManifest(peer.ip);
+    if (manifest && Array.isArray(manifest.services)) {
+      const services = manifest.services
+        .filter(s => s.port && s.url)
+        .map(s => ({ title: s.name || `Port ${s.port}`, port: s.port, url: s.url }));
+      return { ...peer, services };
+    }
+
+    // Fall back to port scan
     // Use batched scanning for Tailscale peers to avoid flooding WireGuard tunnels on mobile
     const openPorts = await scanPortsBatched(peer.ip);
     const isDarwin = isMacOS(peer.os);
@@ -453,4 +467,97 @@ async function scanTailscale({ showAll = false } = {}) {
   return { peers: scanned };
 }
 
-module.exports = { scanLocal, scanTailscale, scanGateway, scanPorts, scanPortsBatched, checkPort, SCAN_PORTS };
+// ---- manifest server (Linux: ss-based dynamic discovery) --------------------
+
+const MANIFEST_PORT    = 9321;
+const MANIFEST_PATH    = '/.well-known/web-finder.json';
+const LOOPBACK_ADDRS   = new Set(['127.0.0.1', '127.0.0.54', '::1']);
+
+/**
+ * Parse `ss -tlnp` output and return all ports that are network-accessible
+ * (bound to 0.0.0.0, ::, or a specific non-loopback address).
+ * Returns: [{ port, process }]
+ */
+async function getListeningPortsSS() {
+  const out = await execPromise('ss -tlnp --no-header 2>/dev/null');
+  if (!out) return [];
+
+  const portMap = new Map(); // port -> { process, accessible }
+  for (const line of out.split('\n')) {
+    const m = line.match(/LISTEN\s+\d+\s+\d+\s+([\d.:[\]*]+):(\d+)\s/);
+    if (!m) continue;
+    const addr = m[1].replace(/[\[\]]/g, '');
+    const port = parseInt(m[2]);
+    if (!port) continue;
+
+    const isLoopback  = LOOPBACK_ADDRS.has(addr);
+    const isBindAll   = addr === '0.0.0.0' || addr === '::' || addr === '*';
+    const accessible  = !isLoopback || isBindAll;
+
+    const procM = line.match(/users:\(\("([^"]+)"/);
+    const proc  = procM ? procM[1] : null;
+
+    if (!portMap.has(port)) {
+      portMap.set(port, { process: proc, accessible });
+    } else if (accessible) {
+      const entry = portMap.get(port);
+      entry.accessible = true;
+      if (!entry.process && proc) entry.process = proc;
+    }
+  }
+
+  return Array.from(portMap.entries())
+    .filter(([, info]) => info.accessible)
+    .map(([port, info]) => ({ port, process: info.process }));
+}
+
+/**
+ * Scan the local machine using `ss` to discover all listening ports dynamically.
+ * Linux-only. Falls back to scanLocal on macOS.
+ * Returns: [{ title, host, port, url }]
+ */
+async function scanLocalSS({ showAll = false } = {}) {
+  if (process.platform !== 'linux') return scanLocal({ showAll });
+
+  const listeningPorts = await getListeningPortsSS();
+  if (listeningPorts.length === 0) return scanLocal({ showAll });
+
+  const services = await Promise.all(listeningPorts.map(async ({ port, process: procName }) => {
+    const svc = await fetchService('127.0.0.1', port, { isDarwin: false, showAll: true });
+    if (!svc) return null;
+    // Use process name as title hint when svc title is a generic "Port N"
+    const title = (svc.title.startsWith('Port ') && procName) ? procName : svc.title;
+    return { title, host: '127.0.0.1', port, url: svc.url };
+  }));
+
+  let result = dedup(services.filter(Boolean));
+  if (!showAll) result = result.filter(s => !NON_WEB_PORTS.has(s.port));
+  return result;
+}
+
+/**
+ * Fetch the web-finder manifest from a peer.
+ * Returns parsed manifest object or null if not available.
+ */
+function fetchManifest(ip) {
+  return new Promise((resolve) => {
+    const url = `http://${ip}:${MANIFEST_PORT}${MANIFEST_PATH}`;
+    const req = http.get(url, { timeout: 800 }, (res) => {
+      if (res.statusCode !== 200) { res.destroy(); resolve(null); return; }
+      let buf = '';
+      res.on('data', (c) => { buf += c; if (buf.length > 65536) { req.destroy(); resolve(null); } });
+      res.on('end', () => {
+        try { resolve(JSON.parse(buf)); } catch { resolve(null); }
+      });
+    });
+    req.on('error',   () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
+module.exports = {
+  scanLocal, scanLocalSS, scanTailscale, scanGateway,
+  scanPorts, scanPortsBatched, checkPort,
+  getListeningPortsSS, fetchManifest,
+  SCAN_PORTS, MANIFEST_PORT, MANIFEST_PATH,
+};

@@ -17,7 +17,9 @@ const { execSync } = require('child_process');
 // Resolve symlinks so scanner.js is found even when binary is symlinked to /usr/local/bin
 const realBin  = fs.realpathSync(__filename);
 const repoRoot = path.join(path.dirname(realBin), '..');
-const { scanLocal, scanTailscale, scanGateway } = require(path.join(repoRoot, 'scanner.js'));
+const { scanLocal, scanLocalSS, scanTailscale, scanGateway, MANIFEST_PORT, MANIFEST_PATH } = require(path.join(repoRoot, 'scanner.js'));
+const http = require('http');
+const os   = require('os');
 
 const pkg  = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
 
@@ -66,9 +68,51 @@ if (args.includes('--update') || args.includes('-u')) {
   process.exit(0);
 }
 
+if (args[0] === 'serve') {
+  const portIdx  = args.indexOf('--port');
+  const servePort = portIdx !== -1 ? parseInt(args[portIdx + 1]) : MANIFEST_PORT;
+  const showAll  = args.includes('--all') || args.includes('-a');
+
+  const server = http.createServer(async (req, res) => {
+    if (req.url !== MANIFEST_PATH) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not found\n');
+      return;
+    }
+    try {
+      const services = await scanLocalSS({ showAll });
+      const manifest = {
+        version:  1,
+        hostname: os.hostname(),
+        services: services.map(s => ({ name: s.title, port: s.port, url: s.url })),
+      };
+      res.writeHead(200, {
+        'Content-Type':                'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control':               'no-store',
+      });
+      res.end(JSON.stringify(manifest));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+  });
+
+  server.listen(servePort, '0.0.0.0', () => {
+    console.log(`web-finder manifest server listening on port ${servePort}`);
+    console.log(`Endpoint: http://localhost:${servePort}${MANIFEST_PATH}`);
+    console.log('Press Ctrl+C to stop.');
+  });
+
+  process.on('SIGTERM', () => server.close(() => process.exit(0)));
+  // Keep running
+  return;
+}
+
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
 Usage: web-finder [options]
+       web-finder serve [--port N]
 
 Options:
   --local, -l       Scan local machine only
@@ -79,6 +123,12 @@ Options:
   --version, -v     Show version
   --help, -h        Show this help
 
+Subcommands:
+  serve             Start manifest server so other Web Finder clients can
+                    discover this machine's services without port scanning.
+                    Default port: ${MANIFEST_PORT}. Override with --port N.
+                    Endpoint: /.well-known/web-finder.json
+
 By default, only shows ports with a web interface.
 Use --all to include non-web ports like AirPlay, SSH, etc.
 
@@ -88,6 +138,8 @@ Examples:
   web-finder --local --json    # Local only, JSON output
   web-finder --tailscale       # Tailscale peers
   web-finder --json            # Everything as JSON
+  web-finder serve             # Start manifest server on port ${MANIFEST_PORT}
+  web-finder serve --port 9000 # Start manifest server on custom port
 `);
   process.exit(0);
 }
