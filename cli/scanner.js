@@ -520,17 +520,24 @@ async function getListeningPortsSS() {
 async function scanLocalSS({ showAll = false } = {}) {
   if (process.platform !== 'linux') return scanLocal({ showAll });
 
-  const [listeningPorts, tsServeMap] = await Promise.all([
+  const [listeningPorts, tsServeMap, zensicalHints] = await Promise.all([
     getListeningPortsSS(),
     getTailscaleServeMap(),
+    getZensicalHints(),
   ]);
   if (listeningPorts.length === 0) return scanLocal({ showAll });
 
   const services = await Promise.all(listeningPorts.map(async ({ port, process: procName }) => {
+    // If we have a zensical project name hint, use it (better than ss process names)
+    const hint = zensicalHints[port];
     const svc = await fetchService('127.0.0.1', port, { isDarwin: false, showAll: true });
-    if (!svc) return null;
-    // Use process name as title hint when svc title is a generic "Port N"
-    const title = (svc.title.startsWith('Port ') && procName) ? procName : svc.title;
+    if (!svc) {
+      // Port open but fetchService got nothing - use hint if available
+      if (hint) return { title: hint, host: '127.0.0.1', port, url: `http://127.0.0.1:${port}` };
+      return null;
+    }
+    // Use zensical hint or ss process name when fetchService returns a generic "Port N"
+    const title = svc.title.startsWith('Port ') ? (hint || procName || svc.title) : svc.title;
 
     // If this port has a tailscale serve HTTPS proxy, upgrade the URL scheme
     // and use the external port (which may differ from the local port)
@@ -558,6 +565,45 @@ async function scanLocalSS({ showAll = false } = {}) {
     });
   }
   return result;
+}
+
+/**
+ * Build a map of port -> project name for zensical processes on Linux.
+ * Uses pgrep to find zensical PIDs, reads /proc/PID/cwd for the working directory,
+ * and extracts the port from command-line flags.
+ * Returns: { port: projectName }
+ */
+async function getZensicalHints() {
+  const hints = {};
+  const out = await execPromise('pgrep -fa zensical 2>/dev/null');
+  if (!out) return hints;
+
+  const fs = require('fs');
+  for (const line of out.split('\n')) {
+    if (!line.includes('serve')) continue;
+    const pidM = line.match(/^(\d+)\s/);
+    if (!pidM) continue;
+    const pid = pidM[1];
+
+    const devAddr  = line.match(/--dev-addr\s+[\d.]+:(\d+)/);
+    const portFlag = line.match(/(?:--port|-p|-a)\s+[\d.]*:?(\d+)/);
+    const port     = devAddr ? parseInt(devAddr[1]) : portFlag ? parseInt(portFlag[1]) : 8000;
+
+    // Try .venv path first (e.g. /project/.venv/bin/zensical -> "project")
+    const pathM = line.match(/\/([^/\s]+)\/.venv\/bin\/zensical/);
+    if (pathM) {
+      hints[port] = pathM[1];
+      continue;
+    }
+
+    // Fall back to working directory basename via /proc/PID/cwd
+    try {
+      const cwd = fs.readlinkSync(`/proc/${pid}/cwd`);
+      const basename = cwd.split('/').filter(Boolean).pop();
+      if (basename) hints[port] = basename;
+    } catch {}
+  }
+  return hints;
 }
 
 /**
