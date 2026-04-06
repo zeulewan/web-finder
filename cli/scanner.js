@@ -520,7 +520,10 @@ async function getListeningPortsSS() {
 async function scanLocalSS({ showAll = false } = {}) {
   if (process.platform !== 'linux') return scanLocal({ showAll });
 
-  const listeningPorts = await getListeningPortsSS();
+  const [listeningPorts, tsServeMap] = await Promise.all([
+    getListeningPortsSS(),
+    getTailscaleServeMap(),
+  ]);
   if (listeningPorts.length === 0) return scanLocal({ showAll });
 
   const services = await Promise.all(listeningPorts.map(async ({ port, process: procName }) => {
@@ -528,7 +531,21 @@ async function scanLocalSS({ showAll = false } = {}) {
     if (!svc) return null;
     // Use process name as title hint when svc title is a generic "Port N"
     const title = (svc.title.startsWith('Port ') && procName) ? procName : svc.title;
-    return { title, host: '127.0.0.1', port, url: svc.url };
+
+    // If this port has a tailscale serve HTTPS proxy, upgrade the URL scheme
+    // and use the external port (which may differ from the local port)
+    let url = svc.url;
+    const extPort = tsServeMap.get(port);
+    if (extPort) {
+      try {
+        const u = new URL(url);
+        u.protocol = 'https:';
+        u.port = extPort;
+        url = u.toString();
+      } catch {}
+    }
+
+    return { title, host: '127.0.0.1', port: extPort || port, url };
   }));
 
   let result = dedup(services.filter(Boolean));
@@ -541,6 +558,36 @@ async function scanLocalSS({ showAll = false } = {}) {
     });
   }
   return result;
+}
+
+/**
+ * Parse `tailscale serve status` to find ports with HTTPS proxies.
+ * Returns a Map of localPort -> { externalPort, https: true }.
+ * Tailscale serve terminates TLS on the Tailscale interface, so remote
+ * clients must use https:// with the DNS name for these ports.
+ */
+async function getTailscaleServeMap() {
+  const map = new Map(); // localPort -> externalPort
+  const out = await execPromise('tailscale serve status 2>/dev/null');
+  if (!out) return map;
+
+  let extPort = null;
+  for (const line of out.split('\n')) {
+    // Match: https://hostname.ts.net:PORT (tailnet only)
+    // Default HTTPS (port 443) has no :PORT suffix
+    const extM = line.match(/^https:\/\/[^/]+?(?::(\d+))?\s+\(tailnet/);
+    if (extM) {
+      extPort = extM[1] ? parseInt(extM[1]) : 443;
+      continue;
+    }
+    // Match: |-- / proxy http://localhost:PORT
+    const proxyM = line.match(/proxy\s+https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)/);
+    if (proxyM && extPort !== null) {
+      map.set(parseInt(proxyM[1]), extPort);
+      extPort = null;
+    }
+  }
+  return map;
 }
 
 /**

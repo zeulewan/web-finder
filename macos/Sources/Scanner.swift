@@ -260,7 +260,7 @@ enum Scanner {
     // MARK: - Manifest
 
     /// Fetch the web-finder manifest from a peer. Returns parsed services on success, nil if unavailable.
-    static func fetchManifest(ip: String) async -> [WebService]? {
+    static func fetchManifest(ip: String, dnsName: String) async -> [WebService]? {
         guard let url = URL(string: "http://\(ip):\(MANIFEST_PORT)\(MANIFEST_PATH)") else { return nil }
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 4.0
@@ -275,9 +275,11 @@ enum Scanner {
                       let port = svc["port"] as? Int,
                       let urlStr = svc["url"] as? String,
                       let origURL = URL(string: urlStr) else { return nil }
-                // Rewrite localhost URLs to use peer's actual IP (manifest URLs are 127.0.0.1)
                 let scheme = origURL.scheme ?? "http"
-                guard let svcURL = URL(string: "\(scheme)://\(ip):\(port)") else { return nil }
+                // HTTPS services need the DNS name (TLS certs are issued for .ts.net)
+                let host = scheme == "https" ? dnsName : ip
+                let path = origURL.path.isEmpty || origURL.path == "/" ? "" : origURL.path
+                guard let svcURL = URL(string: "\(scheme)://\(host):\(port)\(path)") else { return nil }
                 return WebService(title: name, port: port, url: svcURL, isHTTPS: scheme == "https")
             }
         } catch {
@@ -330,7 +332,7 @@ enum Scanner {
                                       os: peer.os, online: false, services: [])
                     }
                     // Use manifest — peers without web-finder serve show no services
-                    let manifestServices = await fetchManifest(ip: peer.ip) ?? []
+                    let manifestServices = await fetchManifest(ip: peer.ip, dnsName: peer.dnsName) ?? []
                     return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
                                   os: peer.os, online: true, services: manifestServices)
                 }
