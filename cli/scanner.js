@@ -412,10 +412,17 @@ async function getISPName() {
 // ---- Tailscale scan ---------------------------------------------------------
 
 async function getTailscaleStatus() {
-  for (const tsPath of TAILSCALE_PATHS) {
-    const out = await execPromise(`"${tsPath}" status --json 2>/dev/null`);
-    if (!out) continue;
+  const out = await execTailscale('status --json 2>/dev/null');
+  if (out) {
     try { return JSON.parse(out); } catch {}
+  }
+  return null;
+}
+
+async function execTailscale(args, timeout = 6000) {
+  for (const tsPath of TAILSCALE_PATHS) {
+    const out = await execPromise(`"${tsPath}" ${args}`, timeout);
+    if (out) return out;
   }
   return null;
 }
@@ -663,7 +670,7 @@ async function getZensicalHints() {
  */
 async function getTailscaleServeMap() {
   const map = new Map(); // localPort -> externalPort
-  const out = await execPromise('tailscale serve status 2>/dev/null');
+  const out = await execTailscale('serve status 2>/dev/null');
   if (!out) return map;
 
   let extPort = null;

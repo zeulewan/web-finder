@@ -4,10 +4,10 @@
  *
  * Usage:
  *   web-finder                 # Scan local + Tailscale, human-readable
- *   web-finder --local         # Local only
- *   web-finder --tailscale     # Tailscale peers only
+ *   web-finder start           # Start/enable manifest sharing
+ *   web-finder stop            # Stop/disable manifest sharing
+ *   web-finder status          # Check daemon, Tailscale Serve, DNS, version
  *   web-finder --json          # Machine-readable JSON output
- *   web-finder --local --json  # Local only, JSON (for agents/scripts)
  */
 
 const path = require('path');
@@ -20,8 +20,159 @@ const repoRoot = path.join(path.dirname(realBin), '..');
 const { scanLocal, scanLocalSS, scanTailscale, scanGateway, MANIFEST_PORT, MANIFEST_PATH } = require(path.join(repoRoot, 'scanner.js'));
 const http = require('http');
 const os   = require('os');
+const dns  = require('dns').promises;
 
 const pkg  = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+const TAILSCALE_PATHS = [
+  'tailscale',
+  '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
+  '/usr/local/bin/tailscale',
+  '/opt/homebrew/bin/tailscale',
+];
+
+function quoteShell(str) {
+  return `"${String(str).replace(/"/g, '\\"')}"`;
+}
+
+function tailscaleCommand() {
+  for (const candidate of TAILSCALE_PATHS) {
+    if (candidate === 'tailscale') {
+      try {
+        const resolved = execSync('command -v tailscale', { encoding: 'utf8' }).trim();
+        if (resolved) return resolved;
+      } catch {}
+    } else if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function execTailscale(args, options = {}) {
+  const cmd = tailscaleCommand();
+  if (!cmd) throw new Error('tailscale command not found');
+  return execSync(`${quoteShell(cmd)} ${args}`, { encoding: 'utf8', ...options });
+}
+
+function versionString() {
+  let commit = '';
+  try { commit = execSync('git rev-parse --short HEAD', { cwd: repoRoot, encoding: 'utf8' }).trim(); } catch {}
+  return commit ? `${pkg.version} (${commit})` : pkg.version;
+}
+
+function serviceStatus() {
+  if (process.platform === 'darwin') {
+    try {
+      const out = execSync(`launchctl print gui/${process.getuid()}/com.zeul.web-finder-serve`, { encoding: 'utf8' });
+      const pid = out.match(/\bpid = (\d+)/)?.[1] || null;
+      const running = /\bstate = running\b/.test(out) || Boolean(pid);
+      return { installed: true, active: running, pid };
+    } catch {
+      return { installed: false, active: false, pid: null };
+    }
+  }
+
+  try {
+    const active = execSync('systemctl --user is-active web-finder-serve', { encoding: 'utf8' }).trim();
+    let pid = null;
+    try {
+      const rawPid = execSync('systemctl --user show -p MainPID --value web-finder-serve', { encoding: 'utf8' }).trim();
+      pid = rawPid && rawPid !== '0' ? rawPid : null;
+    } catch {}
+    return { installed: true, active: active === 'active', pid };
+  } catch {
+    return { installed: false, active: false, pid: null };
+  }
+}
+
+function tailscaleServeStatus() {
+  try {
+    const out = execTailscale('serve status');
+    return {
+      available: true,
+      active: out.includes(`:${MANIFEST_PORT}`) || out.includes(`127.0.0.1:${MANIFEST_PORT}`),
+      raw: out.trim(),
+    };
+  } catch (e) {
+    return { available: false, active: false, error: e.message };
+  }
+}
+
+function fetchLocalManifest() {
+  return new Promise((resolve) => {
+    const req = http.get({
+      hostname: '127.0.0.1',
+      port: MANIFEST_PORT,
+      path: MANIFEST_PATH,
+      timeout: 8000,
+    }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', chunk => { body += chunk; });
+      res.on('end', () => {
+        if (res.statusCode !== 200) {
+          resolve({ ok: false, error: `HTTP ${res.statusCode}` });
+          return;
+        }
+        try {
+          resolve({ ok: true, manifest: JSON.parse(body) });
+        } catch (e) {
+          resolve({ ok: false, error: e.message });
+        }
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', e => resolve({ ok: false, error: e.message }));
+  });
+}
+
+async function magicDnsStatus() {
+  try {
+    const status = JSON.parse(execTailscale('status --json'));
+    const dnsName = status.Self?.DNSName;
+    if (!dnsName) return { available: true, ok: false, warning: 'Tailscale DNSName unavailable.' };
+    try {
+      await dns.lookup(dnsName);
+      return { available: true, ok: true, dnsName };
+    } catch {
+      return {
+        available: true,
+        ok: false,
+        dnsName,
+        warning: 'Tailscale MagicDNS is not resolving on this machine; run `tailscale set --accept-dns=true` for clickable .ts.net links.',
+      };
+    }
+  } catch (e) {
+    return { available: false, ok: false, warning: `Tailscale status unavailable: ${e.message}` };
+  }
+}
+
+async function printStatus({ debug = false } = {}) {
+  const svc = serviceStatus();
+  const serve = tailscaleServeStatus();
+  const manifest = await fetchLocalManifest();
+  const magicDns = await magicDnsStatus();
+
+  console.log(`web-finder ${versionString()}`);
+  console.log(`Daemon: ${svc.active ? `running${svc.pid ? ` (pid ${svc.pid})` : ''}` : svc.installed ? 'installed but not running' : 'not installed'}`);
+  console.log(`Manifest: ${manifest.ok ? `available at http://127.0.0.1:${MANIFEST_PORT}${MANIFEST_PATH}` : `unavailable (${manifest.error})`}`);
+  console.log(`Tailscale Serve: ${serve.active ? 'enabled' : serve.available ? 'not enabled' : 'unavailable'}`);
+  console.log(`MagicDNS: ${magicDns.ok ? `working (${magicDns.dnsName})` : 'not resolving'}`);
+  if (magicDns.warning) console.log(`Warning: ${magicDns.warning}`);
+
+  if (manifest.ok) {
+    const services = manifest.manifest.services || [];
+    console.log(`Advertised services: ${services.length}`);
+    for (const service of services) {
+      console.log(`  - ${service.name || `:${service.port}`} ${service.url}`);
+    }
+  }
+
+  if (debug && serve.raw) {
+    console.log('\nTailscale Serve status:');
+    console.log(serve.raw);
+  }
+}
 
 // MARK: - Autostart helpers
 
@@ -44,11 +195,8 @@ function getAutostartInfo() {
 
 function setupTailscaleServe() {
   try {
-    try { execSync(`tailscale serve --http=${MANIFEST_PORT} off`, { encoding: 'utf8' }); } catch {}
-    execSync(
-      `tailscale serve --bg --https=${MANIFEST_PORT} http://127.0.0.1:${MANIFEST_PORT}`,
-      { encoding: 'utf8' }
-    );
+    try { execTailscale(`serve --http=${MANIFEST_PORT} off`); } catch {}
+    execTailscale(`serve --bg --https=${MANIFEST_PORT} http://127.0.0.1:${MANIFEST_PORT}`);
     console.log('Tailscale Serve enabled for tailnet-only manifest access.');
   } catch (e) {
     console.error('Tailscale Serve setup skipped:', e.message);
@@ -57,10 +205,10 @@ function setupTailscaleServe() {
 
 function removeTailscaleServe() {
   try {
-    execSync(`tailscale serve --https=${MANIFEST_PORT} off`, { encoding: 'utf8' });
+    execTailscale(`serve --https=${MANIFEST_PORT} off`);
   } catch {}
   try {
-    execSync(`tailscale serve --http=${MANIFEST_PORT} off`, { encoding: 'utf8' });
+    execTailscale(`serve --http=${MANIFEST_PORT} off`);
     console.log('Tailscale Serve disabled.');
   } catch {}
 }
@@ -142,15 +290,14 @@ function removeAutostart() {
 }
 
 const args = process.argv.slice(2);
+const command = args.find(a => !a.startsWith('-')) || '';
 
-if (args.includes('--version') || args.includes('-v')) {
-  let commit = '';
-  try { commit = execSync('git rev-parse --short HEAD', { cwd: repoRoot, encoding: 'utf8' }).trim(); } catch {}
-  console.log(commit ? `${pkg.version} (${commit})` : pkg.version);
+if (command === 'version' || args.includes('--version') || args.includes('-v')) {
+  console.log(versionString());
   process.exit(0);
 }
 
-if (args.includes('--update') || args.includes('-u')) {
+if (command === 'update' || args.includes('--update') || args.includes('-u')) {
   console.log('Updating web-finder CLI...');
   try {
     const out = execSync('git pull --ff-only', { cwd: repoRoot, encoding: 'utf8' });
@@ -218,6 +365,26 @@ if (args.includes('--update') || args.includes('-u')) {
   process.exit(0);
 }
 
+if (command === 'start') {
+  setupAutostart();
+  process.exit(0);
+}
+
+if (command === 'stop') {
+  removeAutostart();
+  process.exit(0);
+}
+
+if (command === 'status' || command === 'diagnose') {
+  printStatus({ debug: command === 'diagnose' || args.includes('--debug') })
+    .then(() => process.exit(0))
+    .catch((e) => {
+      console.error('Status failed:', e.message);
+      process.exit(1);
+    });
+  return;
+}
+
 if (args[0] === 'autostart') {
   const sub = args[1];
   if (sub === 'on' || sub === 'enable') {
@@ -236,7 +403,7 @@ if (args[0] === 'serve') {
   const noTsServe = args.includes('--no-tailscale-serve');
   const servePort = portIdx !== -1 ? parseInt(args[portIdx + 1]) : MANIFEST_PORT;
   const serveHost = hostIdx !== -1 ? args[hostIdx + 1] : (process.env.WEB_FINDER_HOST || '127.0.0.1');
-  const showAll  = args.includes('--all') || args.includes('-a');
+  const showAll  = args.includes('--debug') || args.includes('--all') || args.includes('-a');
 
   const server = http.createServer(async (req, res) => {
     if (req.url !== MANIFEST_PATH) {
@@ -281,48 +448,46 @@ if (args[0] === 'serve') {
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
-Usage: web-finder [options]
-       web-finder serve [--host ADDR] [--port N] [--no-tailscale-serve]
+Usage: web-finder [command] [options]
+
+Commands:
+  web-finder              Find web services on this machine, router, and tailnet
+  web-finder start        Start sharing this machine over Tailscale Serve at boot
+  web-finder stop         Stop sharing this machine and disable boot autostart
+  web-finder status       Check daemon, Tailscale Serve, MagicDNS, and version
+  web-finder update       Pull latest version from GitHub and restart sharing
+  web-finder version      Show version
 
 Options:
-  --local, -l       Scan local machine only
-  --tailscale, -t   Scan Tailscale peers only
-  --all, -a         Show all open ports (including non-web)
-  --json, -j        Output as JSON (for scripts/agents)
-  --update, -u      Pull latest version from GitHub
-  --version, -v     Show version
-  --help, -h        Show this help
+  --json, -j          Output as JSON for apps/scripts
+  --debug             Show noisy diagnostics, all open ports, and no-service peers
+  --version, -v       Show version
+  --help, -h          Show this help
 
-Subcommands:
-  serve             Start manifest server so other Web Finder clients can
-                    discover this machine's services without port scanning.
-                    Default host/port: 127.0.0.1:${MANIFEST_PORT}. Also exposes via Tailscale Serve.
-                    Override with --host ADDR --port N.
-                    Endpoint: /.well-known/web-finder.json
-  autostart on      Enable serve to start automatically at login/boot
-  autostart off     Disable autostart
-
-By default, only shows ports with a web interface.
-Use --all to include non-web ports like AirPlay, SSH, etc.
+By default, web-finder only shows machines that are actually serving something.
+Use --debug when you need the full/noisy view.
 
 Examples:
-  web-finder                   # Full scan, web interfaces only
-  web-finder --all             # Full scan, all open ports
-  web-finder --local --json    # Local only, JSON output
-  web-finder --tailscale       # Tailscale peers
-  web-finder --json            # Everything as JSON
-  web-finder serve                         # Start manifest server on localhost:${MANIFEST_PORT}
-  web-finder serve --host 0.0.0.0          # Listen on all interfaces
-  web-finder serve --host 127.0.0.1 --port 9000
-  web-finder serve --no-tailscale-serve    # Local-only manifest server
+  web-finder
+  web-finder start
+  web-finder status
+  web-finder --debug
+  web-finder --json
 `);
   process.exit(0);
 }
 
 const wantLocal     = args.includes('--local')     || args.includes('-l');
 const wantTailscale = args.includes('--tailscale') || args.includes('-t');
-const showAll       = args.includes('--all')       || args.includes('-a');
+const debugMode     = args.includes('--debug')     || args.includes('--all') || args.includes('-a');
+const showAll       = debugMode;
 const jsonMode      = args.includes('--json')      || args.includes('-j');
+
+if (command && !['serve', 'autostart'].includes(command)) {
+  console.error(`Unknown command: ${command}`);
+  console.error('Run `web-finder --help` for usage.');
+  process.exit(1);
+}
 
 const doLocal     = wantLocal     || (!wantLocal && !wantTailscale);
 const doTailscale = wantTailscale || (!wantLocal && !wantTailscale);
@@ -387,8 +552,13 @@ async function main() {
         if (as > 0 && bs === 0) return -1;
         return a.name.localeCompare(b.name);
       });
+      const visible = debugMode ? sorted : sorted.filter(peer => peer.online && (peer.services || []).length > 0);
 
-      for (const peer of sorted) {
+      if (visible.length === 0) {
+        console.log('  (no services found)');
+      }
+
+      for (const peer of visible) {
         if (!peer.online) {
           console.log(`  \u25CB  ${peer.name}`);
         } else if (!peer.services || peer.services.length === 0) {
