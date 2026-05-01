@@ -644,26 +644,42 @@ async function getTailscaleServeMap() {
 function fetchManifest(host, fallbackHost = null) {
   return new Promise((resolve) => {
     const candidates = [
-      host && { scheme: 'https', host },
-      host && { scheme: 'http', host },
-      fallbackHost && { scheme: 'http', host: fallbackHost },
-      fallbackHost && { scheme: 'https', host: fallbackHost },
+      host && { scheme: 'https', connectHost: host },
+      host && { scheme: 'http', connectHost: host },
+      // Tailscale Serve requires the MagicDNS hostname for HTTPS SNI/Host,
+      // but Linux peers may have accept-dns disabled. Connect to the IP while
+      // preserving the DNSName at the TLS/HTTP layer.
+      host && fallbackHost && { scheme: 'https', connectHost: fallbackHost, virtualHost: host },
+      fallbackHost && { scheme: 'http', connectHost: fallbackHost },
+      fallbackHost && { scheme: 'https', connectHost: fallbackHost },
     ].filter(Boolean);
     const seen = new Set();
-    const urls = candidates
-      .map(({ scheme, host }) => `${scheme}://${host}:${MANIFEST_PORT}${MANIFEST_PATH}`)
-      .filter(url => {
-        if (seen.has(url)) return false;
-        seen.add(url);
+    const endpoints = candidates.filter(candidate => {
+        const key = `${candidate.scheme}://${candidate.connectHost}:${MANIFEST_PORT}|${candidate.virtualHost || ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
         return true;
       });
 
-    const tryUrl = (idx) => {
-      if (idx >= urls.length) { resolve(null); return; }
-      const url = urls[idx];
-      const mod = url.startsWith('https:') ? https : http;
-      const req = mod.get(url, { timeout: 3500, rejectUnauthorized: false }, (res) => {
-        if (res.statusCode !== 200) { res.resume(); tryUrl(idx + 1); return; }
+    const tryEndpoint = (idx) => {
+      if (idx >= endpoints.length) { resolve(null); return; }
+      const endpoint = endpoints[idx];
+      const mod = endpoint.scheme === 'https' ? https : http;
+      const options = {
+        protocol: `${endpoint.scheme}:`,
+        hostname: endpoint.connectHost,
+        port: MANIFEST_PORT,
+        path: MANIFEST_PATH,
+        timeout: 3500,
+        rejectUnauthorized: false,
+        headers: {},
+      };
+      if (endpoint.virtualHost) {
+        options.servername = endpoint.virtualHost;
+        options.headers.Host = `${endpoint.virtualHost}:${MANIFEST_PORT}`;
+      }
+      const req = mod.get(options, (res) => {
+        if (res.statusCode !== 200) { res.resume(); tryEndpoint(idx + 1); return; }
         let buf = '';
         res.on('data', (c) => {
           buf += c;
@@ -673,14 +689,14 @@ function fetchManifest(host, fallbackHost = null) {
           }
         });
         res.on('end', () => {
-          try { resolve(JSON.parse(buf)); } catch { tryUrl(idx + 1); }
+          try { resolve(JSON.parse(buf)); } catch { tryEndpoint(idx + 1); }
         });
       });
-      req.on('error',   () => tryUrl(idx + 1));
-      req.on('timeout', () => { req.destroy(); tryUrl(idx + 1); });
+      req.on('error',   () => tryEndpoint(idx + 1));
+      req.on('timeout', () => { req.destroy(); tryEndpoint(idx + 1); });
     };
 
-    tryUrl(0);
+    tryEndpoint(0);
   });
 }
 
