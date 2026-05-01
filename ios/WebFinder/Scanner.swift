@@ -190,13 +190,17 @@ enum Scanner {
             return PeerInfo(name: name, ip: ip, dnsName: dnsName, recentlySeen: recentlySeen, os: os)
         }
 
-        let recentlySeenPeers = peers.filter { $0.recentlySeen }
+        let peersToScan = peers.sorted {
+            if $0.recentlySeen != $1.recentlySeen { return $0.recentlySeen }
+            return $0.name < $1.name
+        }
+        let recentlySeenPeers = peersToScan.filter { $0.recentlySeen }
         dlog("\(peers.count) peers, \(recentlySeenPeers.count) recently seen, checking manifests \(maxConcurrentPeers) at a time...")
 
         // Throttled peer scanning: max N peers at a time to avoid flooding VPN tunnel.
         let totalPeers = max(peers.count, 1)
         var devices = await withTaskGroup(of: Device.self) { group in
-            var iterator = peers.makeIterator()
+            var iterator = peersToScan.makeIterator()
             var running = 0
             var results: [Device] = []
 
@@ -263,12 +267,16 @@ enum Scanner {
             if !candidate.1.isEmpty && !exists { result.append(candidate) }
         }
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 4.0
-        let session = URLSession(configuration: config)
+        config.timeoutIntervalForRequest = 1.5
+        config.timeoutIntervalForResource = 2.0
+        config.waitsForConnectivity = false
+        let session = URLSession(configuration: config, delegate: InsecureTLSDelegate.shared, delegateQueue: nil)
         for (scheme, manifestHost) in candidates {
             guard let url = URL(string: "\(scheme)://\(manifestHost):\(MANIFEST_PORT)\(MANIFEST_PATH)") else { continue }
             do {
-                let (data, response) = try await session.data(from: url)
+                var req = URLRequest(url: url)
+                req.timeoutInterval = 1.5
+                let (data, response) = try await session.data(for: req)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
                 guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let svcs = json["services"] as? [[String: Any]] else { continue }
