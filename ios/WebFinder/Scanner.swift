@@ -255,30 +255,42 @@ enum Scanner {
 
     /// Fetch the web-finder manifest from a peer. Returns parsed services on success, nil if unavailable.
     static func fetchManifest(ip: String, dnsName: String) async -> [WebService]? {
-        guard let url = URL(string: "http://\(ip):\(MANIFEST_PORT)\(MANIFEST_PATH)") else { return nil }
+        let candidates = [
+            ("https", dnsName),
+            ("http", dnsName),
+            ("http", ip),
+        ].reduce(into: [(String, String)]()) { result, candidate in
+            let key = "\(candidate.0)://\(candidate.1)"
+            let exists = result.contains { "\($0.0)://\($0.1)" == key }
+            if !candidate.1.isEmpty && !exists { result.append(candidate) }
+        }
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 4.0
         let session = URLSession(configuration: config)
-        do {
-            let (data, response) = try await session.data(from: url)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let svcs = json["services"] as? [[String: Any]] else { return nil }
-            return svcs.compactMap { svc -> WebService? in
-                guard let name = svc["name"] as? String,
-                      let port = svc["port"] as? Int,
-                      let urlStr = svc["url"] as? String,
-                      let origURL = URL(string: urlStr) else { return nil }
-                let scheme = origURL.scheme ?? "http"
-                // HTTPS services need the DNS name (TLS certs are issued for .ts.net)
-                let host = scheme == "https" ? dnsName : ip
-                let path = origURL.path.isEmpty || origURL.path == "/" ? "" : origURL.path
-                guard let svcURL = URL(string: "\(scheme)://\(host):\(port)\(path)") else { return nil }
-                return WebService(title: name, port: port, url: svcURL, isHTTPS: scheme == "https")
+        for (scheme, manifestHost) in candidates {
+            guard let url = URL(string: "\(scheme)://\(manifestHost):\(MANIFEST_PORT)\(MANIFEST_PATH)") else { continue }
+            do {
+                let (data, response) = try await session.data(from: url)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
+                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let svcs = json["services"] as? [[String: Any]] else { continue }
+                return svcs.compactMap { svc -> WebService? in
+                    guard let name = svc["name"] as? String,
+                          let port = svc["port"] as? Int,
+                          let urlStr = svc["url"] as? String,
+                          let origURL = URL(string: urlStr) else { return nil }
+                    let scheme = origURL.scheme ?? "http"
+                    // HTTPS services need the DNS name (TLS certs are issued for .ts.net)
+                    let host = scheme == "https" ? dnsName : ip
+                    let path = origURL.path.isEmpty || origURL.path == "/" ? "" : origURL.path
+                    guard let svcURL = URL(string: "\(scheme)://\(host):\(port)\(path)") else { return nil }
+                    return WebService(title: name, port: port, url: svcURL, isHTTPS: scheme == "https")
+                }
+            } catch {
+                continue
             }
-        } catch {
-            return nil
         }
+        return nil
     }
 
     // MARK: - Tailscale OAuth API

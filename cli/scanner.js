@@ -285,7 +285,8 @@ async function scanLocal({ showAll = false } = {}) {
   }
 
   // TCP-scan all ports
-  const openPorts = await scanPorts('127.0.0.1');
+  const openPorts = (await scanPorts('127.0.0.1'))
+    .filter(port => port !== MANIFEST_PORT);
 
   // Fetch title for each open port (use hint as title if available)
   const services = await Promise.all(openPorts.map(async (port) => {
@@ -438,7 +439,7 @@ async function scanTailscale({ showAll = false } = {}) {
 
     // Use manifest — peers without web-finder serve show no services
     const isDarwin  = isMacOS(peer.os);
-    const manifest = await fetchManifest(peer.ip);
+    const manifest = await fetchManifest(peer.dnsName, peer.ip);
     const services = (manifest && Array.isArray(manifest.services))
       ? manifest.services.filter(s => s.port && s.url).map(s => {
           // Rewrite localhost URLs to use peer's actual hostname (URLs in manifest are 127.0.0.1)
@@ -640,19 +641,46 @@ async function getTailscaleServeMap() {
  * Fetch the web-finder manifest from a peer.
  * Returns parsed manifest object or null if not available.
  */
-function fetchManifest(ip) {
+function fetchManifest(host, fallbackHost = null) {
   return new Promise((resolve) => {
-    const url = `http://${ip}:${MANIFEST_PORT}${MANIFEST_PATH}`;
-    const req = http.get(url, { timeout: 3500 }, (res) => {
-      if (res.statusCode !== 200) { res.destroy(); resolve(null); return; }
-      let buf = '';
-      res.on('data', (c) => { buf += c; if (buf.length > 65536) { req.destroy(); resolve(null); } });
-      res.on('end', () => {
-        try { resolve(JSON.parse(buf)); } catch { resolve(null); }
+    const candidates = [
+      host && { scheme: 'https', host },
+      host && { scheme: 'http', host },
+      fallbackHost && { scheme: 'http', host: fallbackHost },
+      fallbackHost && { scheme: 'https', host: fallbackHost },
+    ].filter(Boolean);
+    const seen = new Set();
+    const urls = candidates
+      .map(({ scheme, host }) => `${scheme}://${host}:${MANIFEST_PORT}${MANIFEST_PATH}`)
+      .filter(url => {
+        if (seen.has(url)) return false;
+        seen.add(url);
+        return true;
       });
-    });
-    req.on('error',   () => resolve(null));
-    req.on('timeout', () => { req.destroy(); resolve(null); });
+
+    const tryUrl = (idx) => {
+      if (idx >= urls.length) { resolve(null); return; }
+      const url = urls[idx];
+      const mod = url.startsWith('https:') ? https : http;
+      const req = mod.get(url, { timeout: 3500, rejectUnauthorized: false }, (res) => {
+        if (res.statusCode !== 200) { res.resume(); tryUrl(idx + 1); return; }
+        let buf = '';
+        res.on('data', (c) => {
+          buf += c;
+          if (buf.length > 65536) {
+            req.destroy();
+            resolve(null);
+          }
+        });
+        res.on('end', () => {
+          try { resolve(JSON.parse(buf)); } catch { tryUrl(idx + 1); }
+        });
+      });
+      req.on('error',   () => tryUrl(idx + 1));
+      req.on('timeout', () => { req.destroy(); tryUrl(idx + 1); });
+    };
+
+    tryUrl(0);
   });
 }
 

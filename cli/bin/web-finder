@@ -42,6 +42,29 @@ function getAutostartInfo() {
   };
 }
 
+function setupTailscaleServe() {
+  try {
+    try { execSync(`tailscale serve --http=${MANIFEST_PORT} off`, { encoding: 'utf8' }); } catch {}
+    execSync(
+      `tailscale serve --bg --https=${MANIFEST_PORT} http://127.0.0.1:${MANIFEST_PORT}`,
+      { encoding: 'utf8' }
+    );
+    console.log('Tailscale Serve enabled for tailnet-only manifest access.');
+  } catch (e) {
+    console.error('Tailscale Serve setup skipped:', e.message);
+  }
+}
+
+function removeTailscaleServe() {
+  try {
+    execSync(`tailscale serve --https=${MANIFEST_PORT} off`, { encoding: 'utf8' });
+  } catch {}
+  try {
+    execSync(`tailscale serve --http=${MANIFEST_PORT} off`, { encoding: 'utf8' });
+    console.log('Tailscale Serve disabled.');
+  } catch {}
+}
+
 function setupAutostart() {
   const info = getAutostartInfo();
   try {
@@ -56,6 +79,8 @@ function setupAutostart() {
         <string>${info.nodePath}</string>
         <string>${info.binPath}</string>
         <string>serve</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
     </array>
     <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><true/>
@@ -73,7 +98,7 @@ function setupAutostart() {
 Description=web-finder manifest server
 
 [Service]
-ExecStart=${info.nodePath} ${info.binPath} serve
+ExecStart=${info.nodePath} ${info.binPath} serve --host 127.0.0.1
 Restart=on-failure
 RestartSec=5
 
@@ -86,6 +111,7 @@ WantedBy=default.target
       execSync('systemctl --user enable --now web-finder-serve', { encoding: 'utf8' });
       console.log('Autostart enabled (systemd).');
     }
+    setupTailscaleServe();
   } catch (e) {
     console.error('Autostart setup failed:', e.message);
   }
@@ -108,6 +134,7 @@ function removeAutostart() {
       try { execSync('systemctl --user daemon-reload', { encoding: 'utf8' }); } catch {}
       console.log('Autostart disabled.');
     }
+    removeTailscaleServe();
   } catch (e) {
     console.error('Failed to disable autostart:', e.message);
   }
@@ -184,7 +211,10 @@ if (args[0] === 'autostart') {
 
 if (args[0] === 'serve') {
   const portIdx  = args.indexOf('--port');
+  const hostIdx  = args.indexOf('--host');
+  const noTsServe = args.includes('--no-tailscale-serve');
   const servePort = portIdx !== -1 ? parseInt(args[portIdx + 1]) : MANIFEST_PORT;
+  const serveHost = hostIdx !== -1 ? args[hostIdx + 1] : (process.env.WEB_FINDER_HOST || '127.0.0.1');
   const showAll  = args.includes('--all') || args.includes('-a');
 
   const server = http.createServer(async (req, res) => {
@@ -198,7 +228,9 @@ if (args[0] === 'serve') {
       const manifest = {
         version:  1,
         hostname: os.hostname(),
-        services: services.map(s => ({ name: s.title, port: s.port, url: s.url })),
+        services: services
+          .filter(s => s.port !== MANIFEST_PORT)
+          .map(s => ({ name: s.title, port: s.port, url: s.url })),
       };
       res.writeHead(200, {
         'Content-Type':                'application/json',
@@ -212,9 +244,12 @@ if (args[0] === 'serve') {
     }
   });
 
-  server.listen(servePort, '0.0.0.0', () => {
-    console.log(`web-finder manifest server listening on port ${servePort}`);
+  server.listen(servePort, serveHost, () => {
+    console.log(`web-finder manifest server listening on ${serveHost}:${servePort}`);
     console.log(`Endpoint: http://localhost:${servePort}${MANIFEST_PATH}`);
+    if (serveHost === '127.0.0.1' && servePort === MANIFEST_PORT && !noTsServe) {
+      setupTailscaleServe();
+    }
     console.log('Press Ctrl+C to stop.');
   });
 
@@ -226,7 +261,7 @@ if (args[0] === 'serve') {
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
 Usage: web-finder [options]
-       web-finder serve [--port N]
+       web-finder serve [--host ADDR] [--port N] [--no-tailscale-serve]
 
 Options:
   --local, -l       Scan local machine only
@@ -240,7 +275,8 @@ Options:
 Subcommands:
   serve             Start manifest server so other Web Finder clients can
                     discover this machine's services without port scanning.
-                    Default port: ${MANIFEST_PORT}. Override with --port N.
+                    Default host/port: 127.0.0.1:${MANIFEST_PORT}. Also exposes via Tailscale Serve.
+                    Override with --host ADDR --port N.
                     Endpoint: /.well-known/web-finder.json
   autostart on      Enable serve to start automatically at login/boot
   autostart off     Disable autostart
@@ -254,8 +290,10 @@ Examples:
   web-finder --local --json    # Local only, JSON output
   web-finder --tailscale       # Tailscale peers
   web-finder --json            # Everything as JSON
-  web-finder serve             # Start manifest server on port ${MANIFEST_PORT}
-  web-finder serve --port 9000 # Start manifest server on custom port
+  web-finder serve                         # Start manifest server on localhost:${MANIFEST_PORT}
+  web-finder serve --host 0.0.0.0          # Listen on all interfaces
+  web-finder serve --host 127.0.0.1 --port 9000
+  web-finder serve --no-tailscale-serve    # Local-only manifest server
 `);
   process.exit(0);
 }
