@@ -164,8 +164,12 @@ if (args.includes('--update') || args.includes('-u')) {
   if (process.platform === 'darwin') {
     const userApps  = path.join(os.homedir(), 'Applications', 'WebFinder.app');
     const sysApps   = '/Applications/WebFinder.app';
-    const appPath   = fs.existsSync(userApps) ? userApps : fs.existsSync(sysApps) ? sysApps : null;
-    const installDir = fs.existsSync(userApps) ? path.join(os.homedir(), 'Applications') : fs.existsSync(sysApps) ? '/Applications' : path.join(os.homedir(), 'Applications');
+    const appPath   = fs.existsSync(sysApps) ? sysApps : fs.existsSync(userApps) ? userApps : null;
+    const installDirs = [
+      fs.existsSync(sysApps) ? '/Applications' : null,
+      fs.existsSync(userApps) ? path.join(os.homedir(), 'Applications') : null,
+    ].filter(Boolean);
+    if (installDirs.length === 0) installDirs.push(path.join(os.homedir(), 'Applications'));
 
     try {
       const macosDir = path.join(repoRoot, '..', 'macos');
@@ -174,10 +178,13 @@ if (args.includes('--update') || args.includes('-u')) {
       if (fs.existsSync(buildScript)) {
         console.log('Building WebFinder.app from checked-out repo...');
         execSync('./build.sh', { cwd: macosDir, stdio: 'inherit' });
-        fs.mkdirSync(installDir, { recursive: true });
-        execSync(`rm -rf "${path.join(installDir, 'WebFinder.app')}" && cp -R "${builtApp}" "${installDir}/"`, { stdio: 'inherit' });
-        execSync(`xattr -dr com.apple.quarantine "${path.join(installDir, 'WebFinder.app')}" 2>/dev/null || true`, { encoding: 'utf8' });
-        console.log(`WebFinder.app installed in ${installDir}. Restart the app to use the updated build.`);
+        for (const installDir of installDirs) {
+          fs.mkdirSync(installDir, { recursive: true });
+          execSync(`rm -rf "${path.join(installDir, 'WebFinder.app')}" && cp -R "${builtApp}" "${installDir}/"`, { stdio: 'inherit' });
+          execSync(`xattr -dr com.apple.quarantine "${path.join(installDir, 'WebFinder.app')}" 2>/dev/null || true`, { encoding: 'utf8' });
+          console.log(`WebFinder.app installed in ${installDir}.`);
+        }
+        console.log('Restart the app to use the updated build.');
       } else {
         const installed = appPath
           ? execSync(`defaults read "${appPath}/Contents/Info.plist" CFBundleShortVersionString`, { encoding: 'utf8' }).trim()
