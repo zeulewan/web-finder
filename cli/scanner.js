@@ -577,11 +577,11 @@ async function scanLocalSS({ showAll = false, tailnetOnly = false } = {}) {
     // Use zensical hint or ss process name when fetchService returns a generic "Port N"
     const title = svc.title.startsWith('Port ') ? (hint || procName || svc.title) : svc.title;
 
-    // If this port has a tailscale serve HTTPS proxy, upgrade the URL scheme
-    // and use the external port (which may differ from the local port)
+    // For manifests, advertise the Tailscale Serve HTTPS URL. For local CLI
+    // output, keep the directly reachable localhost URL.
     let url = svc.url;
     const extPort = tsServeMap.get(port);
-    if (extPort) {
+    if (extPort && tailnetOnly) {
       try {
         const u = new URL(url);
         u.protocol = 'https:';
@@ -590,10 +590,11 @@ async function scanLocalSS({ showAll = false, tailnetOnly = false } = {}) {
       } catch {}
     }
 
-    return { title, host: '127.0.0.1', port: extPort || port, url };
+    return { title, host: '127.0.0.1', port: (tailnetOnly && extPort) ? extPort : port, url };
   }));
 
-  let result = dedup(services.filter(Boolean));
+  let result = dedup(services.filter(Boolean))
+    .filter(s => s.port !== MANIFEST_PORT);
   if (tailnetOnly) {
     result = result.filter(s => {
       try {

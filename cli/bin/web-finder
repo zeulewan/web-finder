@@ -339,7 +339,7 @@ async function main() {
   const result = {};
   const tasks  = [];
 
-  if (doLocal)     tasks.push(scanLocal({ showAll }).then(r     => { result.local     = r; }));
+  if (doLocal)     tasks.push(scanLocalSS({ showAll }).then(r   => { result.local     = r; }));
   if (doLocal)     tasks.push(scanGateway({ showAll }).then(r  => { result.gateway   = r; }));
   if (doTailscale) tasks.push(scanTailscale({ showAll }).then(r => { result.tailscale = r; }));
   await Promise.all(tasks);
