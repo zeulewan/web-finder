@@ -158,7 +158,7 @@ enum Scanner {
         let myHostname = ProcessInfo.processInfo.hostName
             .components(separatedBy: ".").first?.lowercased() ?? ""
 
-        struct PeerInfo { let name: String; let ip: String; let dnsName: String; let online: Bool; let os: String? }
+        struct PeerInfo { let name: String; let ip: String; let dnsName: String; let recentlySeen: Bool; let os: String? }
 
         let now = Date()
         let isoFormatter = ISO8601DateFormatter()
@@ -181,17 +181,17 @@ enum Scanner {
             if name.lowercased() == myHostname { return nil }
 
             let os = device["os"] as? String
-            var online = false
+            var recentlySeen = false
             if let lastSeenStr = device["lastSeen"] as? String,
                let lastSeen = isoFormatter.date(from: lastSeenStr) ?? isoFallback.date(from: lastSeenStr) {
-                online = now.timeIntervalSince(lastSeen) < 300
+                recentlySeen = now.timeIntervalSince(lastSeen) < 300
             }
 
-            return PeerInfo(name: name, ip: ip, dnsName: dnsName, online: online, os: os)
+            return PeerInfo(name: name, ip: ip, dnsName: dnsName, recentlySeen: recentlySeen, os: os)
         }
 
-        let onlinePeers = peers.filter { $0.online }
-        dlog("\(peers.count) peers, \(onlinePeers.count) online, scanning \(maxConcurrentPeers) at a time...")
+        let recentlySeenPeers = peers.filter { $0.recentlySeen }
+        dlog("\(peers.count) peers, \(recentlySeenPeers.count) recently seen, checking manifests \(maxConcurrentPeers) at a time...")
 
         // Throttled peer scanning: max N peers at a time to avoid flooding VPN tunnel.
         let totalPeers = max(peers.count, 1)
@@ -204,15 +204,13 @@ enum Scanner {
             func addNext() -> Bool {
                 guard let peer = iterator.next() else { return false }
                 group.addTask {
-                    guard peer.online else {
-                        return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
-                                      os: peer.os, online: false, services: [])
-                    }
                     dlog("fetching manifest from \(peer.name) (\(peer.ip))...")
-                    let services = await fetchManifest(ip: peer.ip, dnsName: peer.dnsName) ?? []
-                    dlog("  \(peer.name): \(services.count) services from manifest")
+                    let services = await fetchManifest(ip: peer.ip, dnsName: peer.dnsName)
+                    let finalServices = services ?? []
+                    let online = peer.recentlySeen || services != nil
+                    dlog("  \(peer.name): \(finalServices.count) services from manifest, online=\(online)")
                     return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
-                                  os: peer.os, online: true, services: services)
+                                  os: peer.os, online: online, services: finalServices)
                 }
                 return true
             }
