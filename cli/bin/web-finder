@@ -168,7 +168,7 @@ if (args.includes('--update') || args.includes('-u')) {
     const installDir = fs.existsSync(userApps) ? path.join(os.homedir(), 'Applications') : fs.existsSync(sysApps) ? '/Applications' : path.join(os.homedir(), 'Applications');
 
     try {
-      const macosDir = path.join(repoRoot, 'macos');
+      const macosDir = path.join(repoRoot, '..', 'macos');
       const buildScript = path.join(macosDir, 'build.sh');
       const builtApp = path.join(macosDir, 'WebFinder.app');
       if (fs.existsSync(buildScript)) {
