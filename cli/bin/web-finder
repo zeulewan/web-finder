@@ -109,6 +109,7 @@ WantedBy=default.target
       fs.writeFileSync(info.unit, unit);
       execSync('systemctl --user daemon-reload', { encoding: 'utf8' });
       execSync('systemctl --user enable --now web-finder-serve', { encoding: 'utf8' });
+      execSync('systemctl --user restart web-finder-serve', { encoding: 'utf8' });
       console.log('Autostart enabled (systemd).');
     }
     setupTailscaleServe();
