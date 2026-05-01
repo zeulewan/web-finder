@@ -1,6 +1,13 @@
 import SwiftUI
 import SafariServices
 
+enum AppBuild {
+    static let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+    static let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+    static let kind = Bundle.main.infoDictionary?["WFBuildKind"] as? String ?? "DEV"
+    static let label = "\(kind) \(version) (\(build))"
+}
+
 // MARK: - Safari in-app browser
 
 struct SafariView: UIViewControllerRepresentable {
@@ -225,6 +232,17 @@ struct ContentView: View {
 
             if model.debugMode {
                 DebugLogSection()
+            }
+
+            Section {
+                HStack {
+                    Spacer()
+                    Text(AppBuild.label)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
             }
         }
         .listStyle(.insetGrouped)
@@ -478,6 +496,11 @@ struct SettingsView: View {
                 Section {
                     LabeledContent("Version") {
                         Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "\u{2014}")
+                            .foregroundStyle(.secondary)
+                    }
+                    LabeledContent("Build") {
+                        Text(AppBuild.label)
+                            .font(.footnote.monospaced())
                             .foregroundStyle(.secondary)
                     }
                 }
