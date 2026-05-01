@@ -159,22 +159,34 @@ if (args.includes('--update') || args.includes('-u')) {
     process.exit(1);
   }
 
-  // On macOS, also update the desktop app if installed
+  // On macOS, also update the desktop app if installed. Prefer the checked-out
+  // repo so CLI/app fixes stay in lockstep without waiting for a release zip.
   if (process.platform === 'darwin') {
     const userApps  = path.join(os.homedir(), 'Applications', 'WebFinder.app');
     const sysApps   = '/Applications/WebFinder.app';
     const appPath   = fs.existsSync(userApps) ? userApps : fs.existsSync(sysApps) ? sysApps : null;
-    const installDir = fs.existsSync(userApps) ? path.join(os.homedir(), 'Applications') : sysApps ? '/Applications' : path.join(os.homedir(), 'Applications');
+    const installDir = fs.existsSync(userApps) ? path.join(os.homedir(), 'Applications') : fs.existsSync(sysApps) ? '/Applications' : path.join(os.homedir(), 'Applications');
 
     try {
-      const installed = appPath
-        ? execSync(`defaults read "${appPath}/Contents/Info.plist" CFBundleShortVersionString`, { encoding: 'utf8' }).trim()
-        : '0';
-      const redirect = execSync('curl -sI -o /dev/null -w "%{url_effective}" -L https://github.com/zeulewan/web-finder/releases/latest', { encoding: 'utf8' }).trim();
-      const latest = redirect.match(/\/tag\/v?(.+)$/)?.[1] || '';
-      if (installed === latest) {
-        console.log(`WebFinder.app already up to date (${installed}).`);
+      const macosDir = path.join(repoRoot, 'macos');
+      const buildScript = path.join(macosDir, 'build.sh');
+      const builtApp = path.join(macosDir, 'WebFinder.app');
+      if (fs.existsSync(buildScript)) {
+        console.log('Building WebFinder.app from checked-out repo...');
+        execSync('./build.sh', { cwd: macosDir, stdio: 'inherit' });
+        fs.mkdirSync(installDir, { recursive: true });
+        execSync(`rm -rf "${path.join(installDir, 'WebFinder.app')}" && cp -R "${builtApp}" "${installDir}/"`, { stdio: 'inherit' });
+        execSync(`xattr -dr com.apple.quarantine "${path.join(installDir, 'WebFinder.app')}" 2>/dev/null || true`, { encoding: 'utf8' });
+        console.log(`WebFinder.app installed in ${installDir}. Restart the app to use the updated build.`);
       } else {
+        const installed = appPath
+          ? execSync(`defaults read "${appPath}/Contents/Info.plist" CFBundleShortVersionString`, { encoding: 'utf8' }).trim()
+          : '0';
+        const redirect = execSync('curl -sI -o /dev/null -w "%{url_effective}" -L https://github.com/zeulewan/web-finder/releases/latest', { encoding: 'utf8' }).trim();
+        const latest = redirect.match(/\/tag\/v?(.+)$/)?.[1] || '';
+        if (installed === latest) {
+          console.log(`WebFinder.app already up to date (${installed}).`);
+        } else {
         const appUrl = 'https://github.com/zeulewan/web-finder/releases/latest/download/WebFinder.app.zip';
         const tmpZip = path.join(repoRoot, 'WebFinder.app.zip');
         const destDir = fs.existsSync(sysApps) ? '/Applications' : path.join(os.homedir(), 'Applications');
@@ -185,6 +197,7 @@ if (args.includes('--update') || args.includes('-u')) {
         execSync(`xattr -dr com.apple.quarantine "${path.join(destDir, 'WebFinder.app')}" 2>/dev/null || true`, { encoding: 'utf8' });
         fs.unlinkSync(tmpZip);
         console.log(`WebFinder.app updated in ${destDir}.`);
+        }
       }
     } catch (e) {
       console.error('App update failed:', e.message);

@@ -101,6 +101,10 @@ enum Scanner {
     // MARK: - Top-level scan
 
     static func scanAll(showAll: Bool = false, onProgress: (@Sendable (Double) -> Void)? = nil) async -> [Device] {
+        if let cliDevices = await scanUsingCLI(showAll: showAll, onProgress: onProgress) {
+            return cliDevices
+        }
+
         // Run local, gateway, and Tailscale scans in parallel
         async let local   = scanLocalDevice(showAll: showAll)
         async let gateway = scanGateway(showAll: showAll)
@@ -118,6 +122,148 @@ enum Scanner {
             return $0.name < $1.name
         }
         return all
+    }
+
+    // MARK: - CLI-backed scan
+
+    struct CLIResult: Decodable {
+        let gateway: CLIGateway?
+        let tailscale: CLITailscale?
+        let local: [CLIService]?
+    }
+
+    struct CLIGateway: Decodable {
+        let name: String?
+        let ip: String?
+        let services: [CLIService]?
+    }
+
+    struct CLITailscale: Decodable {
+        let peers: [CLIPeer]?
+    }
+
+    struct CLIPeer: Decodable {
+        let name: String?
+        let ip: String?
+        let dnsName: String?
+        let online: Bool?
+        let os: String?
+        let services: [CLIService]?
+    }
+
+    struct CLIService: Decodable {
+        let title: String?
+        let name: String?
+        let port: Int?
+        let url: String?
+    }
+
+    static let cliPaths = [
+        "\(FileManager.default.homeDirectoryForCurrentUser.path)/.web-finder/cli/bin/web-finder",
+        "/usr/local/bin/web-finder",
+        "/opt/homebrew/bin/web-finder",
+    ]
+
+    static func scanUsingCLI(showAll: Bool, onProgress: (@Sendable (Double) -> Void)?) async -> [Device]? {
+        guard let cli = cliPaths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            return nil
+        }
+
+        onProgress?(0.05)
+        var args = ["--json"]
+        if showAll { args.append("--all") }
+        guard let out = await runProcess(executable: cli, arguments: args, timeout: 20.0),
+              let data = out.data(using: .utf8),
+              let result = try? JSONDecoder().decode(CLIResult.self, from: data) else {
+            return nil
+        }
+        onProgress?(0.85)
+
+        var devices: [Device] = []
+
+        let hostname = ProcessInfo.processInfo.hostName
+            .components(separatedBy: ".").first ?? "This Mac"
+        let localServices = (result.local ?? []).compactMap(webService(from:))
+        devices.append(Device(name: hostname, ip: "127.0.0.1", isLocal: true, os: "darwin",
+                              online: true, services: localServices))
+
+        if let gateway = result.gateway,
+           let ip = gateway.ip,
+           let services = gateway.services?.compactMap(webService(from:)),
+           !services.isEmpty {
+            devices.append(Device(name: gateway.name ?? "Gateway", ip: ip, isLocal: false,
+                                  isGateway: true, os: nil, online: true, services: services))
+        }
+
+        for peer in result.tailscale?.peers ?? [] {
+            guard let ip = peer.ip ?? peer.dnsName else { continue }
+            let displayIP = peer.dnsName ?? ip
+            devices.append(Device(name: peer.name ?? displayIP,
+                                  ip: displayIP,
+                                  isLocal: false,
+                                  os: peer.os,
+                                  online: peer.online ?? false,
+                                  services: (peer.services ?? []).compactMap(webService(from:))))
+        }
+
+        devices.sort {
+            if $0.isLocal != $1.isLocal { return $0.isLocal }
+            let lhs = $0.services.isEmpty ? 1 : 0
+            let rhs = $1.services.isEmpty ? 1 : 0
+            if lhs != rhs { return lhs < rhs }
+            if $0.online != $1.online { return $0.online }
+            return $0.name < $1.name
+        }
+        onProgress?(1.0)
+        return devices
+    }
+
+    static func webService(from service: CLIService) -> WebService? {
+        guard let port = service.port,
+              let urlString = service.url,
+              let url = URL(string: urlString) else { return nil }
+        let title = service.title ?? service.name ?? "Port \(port)"
+        return WebService(title: title, port: port, url: url, isHTTPS: url.scheme == "https")
+    }
+
+    static func runProcess(executable: String, arguments: [String], timeout: TimeInterval) async -> String? {
+        await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+            let lock = NSLock()
+            var done = false
+            let finish: (String?) -> Void = { result in
+                lock.lock(); let shouldResume = !done; done = true; lock.unlock()
+                if shouldResume { continuation.resume(returning: result) }
+            }
+
+            let process = Process()
+            let stdout = Pipe()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = arguments
+            process.standardOutput = stdout
+            process.standardError = Pipe()
+
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
+                if process.isRunning { process.terminate() }
+                finish(nil)
+            }
+
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    guard process.terminationStatus == 0 else {
+                        finish(nil)
+                        return
+                    }
+                    let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(),
+                                        encoding: .utf8)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    finish(output?.isEmpty == false ? output : nil)
+                } catch {
+                    finish(nil)
+                }
+            }
+        }
     }
 
     // MARK: - Local
