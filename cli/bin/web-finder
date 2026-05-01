@@ -374,6 +374,9 @@ async function main() {
     } else if (!result.tailscale.peers || result.tailscale.peers.length === 0) {
       console.log('  (no peers)');
     } else {
+      for (const warning of result.tailscale.warnings || []) {
+        console.log(`  !  ${warning}`);
+      }
       // Sort: has services first, then offline
       const sorted = [...result.tailscale.peers].sort((a, b) => {
         if (!a.online && b.online)  return 1;
@@ -391,6 +394,9 @@ async function main() {
         } else if (!peer.services || peer.services.length === 0) {
           console.log(`  \u25CE  ${peer.name}  ${dim}(no services)${reset}`);
         } else {
+          for (const warning of peer.warnings || []) {
+            console.log(`  !  ${peer.name}: ${warning}`);
+          }
           for (const svc of peer.services) {
             console.log(`  \u25CF  ${pad(peer.name, 16)} ${pad(svc.title, 28)} ${svc.url}`);
           }

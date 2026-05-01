@@ -50,6 +50,13 @@ function execPromise(cmd, timeout = 6000) {
   });
 }
 
+function resolveHost(host) {
+  return new Promise((resolve) => {
+    if (!host) { resolve(false); return; }
+    require('dns').lookup(host, (err) => resolve(!err));
+  });
+}
+
 function checkPort(host, port) {
   return new Promise((resolve) => {
     const socket = new net.Socket();
@@ -434,6 +441,10 @@ async function scanTailscale({ showAll = false } = {}) {
     })
     .filter(p => p.ip);
 
+  const dnsWarning = status.Self?.DNSName
+    ? !(await resolveHost((status.Self.DNSName || '').replace(/\.$/, '')))
+    : false;
+
   const scanned = await Promise.all(peers.map(async (peer) => {
     if (!peer.online) return { ...peer, services: [] };
 
@@ -463,10 +474,19 @@ async function scanTailscale({ showAll = false } = {}) {
         return true;
       });
     }
-    return { ...peer, services: result };
+    const warnings = [];
+    if (manifest?.usedIpSniFallback) {
+      warnings.push(`MagicDNS failed for ${peer.dnsName}; used Tailscale IP fallback for discovery`);
+    }
+    return { ...peer, services: result, warnings };
   }));
 
-  return { peers: scanned };
+  const warnings = [];
+  if (dnsWarning) {
+    warnings.push('Tailscale MagicDNS is not resolving on this machine; run `tailscale set --accept-dns=true` for clickable .ts.net links.');
+  }
+
+  return { peers: scanned, warnings };
 }
 
 // ---- manifest server (Linux: ss-based dynamic discovery) --------------------
@@ -716,7 +736,11 @@ function fetchManifest(host, fallbackHost = null) {
           }
         });
         res.on('end', () => {
-          try { resolve(JSON.parse(buf)); } catch { tryEndpoint(idx + 1); }
+          try {
+            const manifest = JSON.parse(buf);
+            if (endpoint.virtualHost) manifest.usedIpSniFallback = true;
+            resolve(manifest);
+          } catch { tryEndpoint(idx + 1); }
         });
       });
       req.on('error',   () => tryEndpoint(idx + 1));
