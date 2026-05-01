@@ -404,6 +404,41 @@ if (args[0] === 'serve') {
   const servePort = portIdx !== -1 ? parseInt(args[portIdx + 1]) : MANIFEST_PORT;
   const serveHost = hostIdx !== -1 ? args[hostIdx + 1] : (process.env.WEB_FINDER_HOST || '127.0.0.1');
   const showAll  = args.includes('--debug') || args.includes('--all') || args.includes('-a');
+  const cacheMs = 15000;
+  const staleKeepMs = 5 * 60 * 1000;
+  let manifestCache = null;
+  let manifestCacheAt = 0;
+  let manifestRefresh = null;
+
+  async function buildManifest() {
+    const services = await scanLocalSS({ showAll, tailnetOnly: true });
+    return {
+      version:  1,
+      hostname: os.hostname(),
+      services: services
+        .filter(s => s.port !== MANIFEST_PORT)
+        .map(s => ({ name: s.title, port: s.port, url: s.url })),
+    };
+  }
+
+  async function refreshManifestCache() {
+    if (manifestRefresh) return manifestRefresh;
+    manifestRefresh = buildManifest()
+      .then((manifest) => {
+        const now = Date.now();
+        const oldCount = manifestCache?.services?.length || 0;
+        const newCount = manifest.services.length;
+        if (manifestCache && newCount < oldCount && now - manifestCacheAt < staleKeepMs) {
+          manifestCacheAt = now;
+          return manifestCache;
+        }
+        manifestCache = manifest;
+        manifestCacheAt = now;
+        return manifestCache;
+      })
+      .finally(() => { manifestRefresh = null; });
+    return manifestRefresh;
+  }
 
   const server = http.createServer(async (req, res) => {
     if (req.url !== MANIFEST_PATH) {
@@ -412,14 +447,9 @@ if (args[0] === 'serve') {
       return;
     }
     try {
-      const services = await scanLocalSS({ showAll, tailnetOnly: true });
-      const manifest = {
-        version:  1,
-        hostname: os.hostname(),
-        services: services
-          .filter(s => s.port !== MANIFEST_PORT)
-          .map(s => ({ name: s.title, port: s.port, url: s.url })),
-      };
+      const manifest = (manifestCache && Date.now() - manifestCacheAt < cacheMs)
+        ? manifestCache
+        : await refreshManifestCache();
       res.writeHead(200, {
         'Content-Type':                'application/json',
         'Access-Control-Allow-Origin': '*',
@@ -438,6 +468,7 @@ if (args[0] === 'serve') {
     if (serveHost === '127.0.0.1' && servePort === MANIFEST_PORT && !noTsServe) {
       setupTailscaleServe();
     }
+    refreshManifestCache().catch(() => {});
     console.log('Press Ctrl+C to stop.');
   });
 
