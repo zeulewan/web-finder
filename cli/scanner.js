@@ -518,8 +518,25 @@ async function getListeningPortsSS() {
  * Linux-only. Falls back to scanLocal on macOS.
  * Returns: [{ title, host, port, url }]
  */
-async function scanLocalSS({ showAll = false } = {}) {
-  if (process.platform !== 'linux') return scanLocal({ showAll });
+async function scanLocalSS({ showAll = false, tailnetOnly = false } = {}) {
+  if (process.platform !== 'linux') {
+    const services = await scanLocal({ showAll });
+    if (!tailnetOnly) return services;
+
+    const tsServeMap = await getTailscaleServeMap();
+    return services.flatMap(service => {
+      const extPort = tsServeMap.get(service.port);
+      if (!extPort) return [];
+      try {
+        const u = new URL(service.url);
+        u.protocol = 'https:';
+        u.port = extPort;
+        return [{ ...service, port: extPort, url: u.toString() }];
+      } catch {
+        return [];
+      }
+    });
+  }
 
   const [listeningPorts, tsServeMap, zensicalHints] = await Promise.all([
     getListeningPortsSS(),
@@ -557,6 +574,16 @@ async function scanLocalSS({ showAll = false } = {}) {
   }));
 
   let result = dedup(services.filter(Boolean));
+  if (tailnetOnly) {
+    result = result.filter(s => {
+      try {
+        const u = new URL(s.url);
+        return u.protocol === 'https:' && u.hostname === '127.0.0.1';
+      } catch {
+        return false;
+      }
+    });
+  }
   if (!showAll) {
     result = result.filter(s => {
       if (NON_WEB_PORTS.has(s.port)) return false;
