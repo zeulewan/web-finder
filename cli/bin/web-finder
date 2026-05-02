@@ -300,18 +300,23 @@ function setupAutostart() {
       console.log('Autostart enabled (LaunchAgent).');
     } else if (info.type === 'cron') {
       const marker = '# web-finder-serve';
-      const cronLine = `@reboot ${quoteShell(info.nodePath)} ${quoteShell(info.binPath)} serve --host 127.0.0.1 >> /tmp/web-finder-serve.log 2>&1 ${marker}`;
-      let existing = '';
-      try { existing = execSync('crontab -l 2>/dev/null', { encoding: 'utf8' }); } catch {}
-      const next = existing
-        .split('\n')
-        .filter(line => line.trim() && !line.includes(marker))
-        .concat(cronLine)
-        .join('\n') + '\n';
-      const tmp = path.join(os.tmpdir(), `web-finder-cron-${process.pid}`);
-      fs.writeFileSync(tmp, next);
-      execSync(`crontab ${quoteShell(tmp)}`, { encoding: 'utf8' });
-      fs.unlinkSync(tmp);
+      if (hasCommand('crontab')) {
+        const cronLine = `@reboot ${quoteShell(info.nodePath)} ${quoteShell(info.binPath)} serve --host 127.0.0.1 >> /tmp/web-finder-serve.log 2>&1 ${marker}`;
+        let existing = '';
+        try { existing = execSync('crontab -l 2>/dev/null', { encoding: 'utf8' }); } catch {}
+        const next = existing
+          .split('\n')
+          .filter(line => line.trim() && !line.includes(marker))
+          .concat(cronLine)
+          .join('\n') + '\n';
+        const tmp = path.join(os.tmpdir(), `web-finder-cron-${process.pid}`);
+        fs.writeFileSync(tmp, next);
+        execSync(`crontab ${quoteShell(tmp)}`, { encoding: 'utf8' });
+        fs.unlinkSync(tmp);
+        console.log('Autostart enabled (cron).');
+      } else {
+        console.log('Autostart unavailable: crontab not found; starting for current boot only.');
+      }
       if (fs.existsSync(info.pidfile)) {
         const pid = fs.readFileSync(info.pidfile, 'utf8').trim();
         if (pid) {
@@ -320,7 +325,7 @@ function setupAutostart() {
       }
       const startCmd = `nohup ${quoteShell(info.nodePath)} ${quoteShell(info.binPath)} serve --host 127.0.0.1 >> /tmp/web-finder-serve.log 2>&1 & echo $! > ${quoteShell(info.pidfile)}`;
       execSync(startCmd, { encoding: 'utf8' });
-      console.log('Autostart enabled (cron).');
+      console.log('Manifest server started.');
     } else {
       const unit = `[Unit]
 Description=web-finder manifest server
@@ -359,16 +364,18 @@ function removeAutostart() {
       }
     } else if (info.type === 'cron') {
       const marker = '# web-finder-serve';
-      let existing = '';
-      try { existing = execSync('crontab -l 2>/dev/null', { encoding: 'utf8' }); } catch {}
-      const next = existing
-        .split('\n')
-        .filter(line => line.trim() && !line.includes(marker))
-        .join('\n');
-      const tmp = path.join(os.tmpdir(), `web-finder-cron-${process.pid}`);
-      fs.writeFileSync(tmp, next ? `${next}\n` : '');
-      execSync(`crontab ${quoteShell(tmp)}`, { encoding: 'utf8' });
-      fs.unlinkSync(tmp);
+      if (hasCommand('crontab')) {
+        let existing = '';
+        try { existing = execSync('crontab -l 2>/dev/null', { encoding: 'utf8' }); } catch {}
+        const next = existing
+          .split('\n')
+          .filter(line => line.trim() && !line.includes(marker))
+          .join('\n');
+        const tmp = path.join(os.tmpdir(), `web-finder-cron-${process.pid}`);
+        fs.writeFileSync(tmp, next ? `${next}\n` : '');
+        execSync(`crontab ${quoteShell(tmp)}`, { encoding: 'utf8' });
+        fs.unlinkSync(tmp);
+      }
       if (fs.existsSync(info.pidfile)) {
         const pid = fs.readFileSync(info.pidfile, 'utf8').trim();
         if (pid) {
