@@ -1,6 +1,6 @@
 {
   "name": "web-finder",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Scan your local network and Tailscale peers for web interfaces",
   "bin": {
     "web-finder": "./bin/web-finder"
