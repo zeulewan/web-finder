@@ -41,9 +41,16 @@ cd ios && bash build-ios.sh
 ## Deploying
 
 - **CLI/macOS**: `gh release create vX.Y.Z macos/WebFinder.app.zip` - users update via `web-finder --update`
-- **iOS**: Archive in Xcode, upload via Organizer > Distribute App > App Store Connect
+- **iOS App Store**: `ios/build-ios.sh` creates an unsigned IPA for local/manual use; it is **not** the App Store upload path.
+  1. Bump iOS version/build in `ios/WebFinder.xcodeproj/project.pbxproj` and `ios/WebFinder/Info.plist`. App Store uploads need a new `CFBundleVersion` for every upload; public updates need a new `CFBundleShortVersionString`.
+  2. Open `ios/WebFinder.xcodeproj` in Xcode.
+  3. Select a generic iOS destination: `Any iOS Device (arm64)`.
+  4. Run `Product > Archive`.
+  5. In Organizer, select the archive, click `Distribute App`, choose `App Store Connect`, then `Upload`.
+  6. Keep default automatic signing/team `25QMAKVCBN`; enable symbol upload if offered; do not rely on Xcode to silently manage version/build numbers.
+  7. Wait for App Store Connect build processing, then go to App Store Connect > Web Finder > version `X.Y.Z`, select the uploaded build, fill release notes/compliance, and submit for review or TestFlight as needed.
 - **Manifest server on workstation**: `systemctl --user restart web-finder-serve` after updating `~/.web-finder/`
-- Versions must be bumped in: `cli/package.json`, `macos/Info.plist`, `ios/WebFinder/Info.plist`
+- Versions must be bumped in: `cli/package.json`, `macos/Info.plist`, `ios/WebFinder/Info.plist`, `ios/WebFinder.xcodeproj/project.pbxproj`
 
 ## Testing changes
 

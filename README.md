@@ -41,16 +41,19 @@ curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/uninstall.s
 ## CLI
 
 ```bash
-web-finder                   # Full scan, web interfaces only
-web-finder --all             # Include non-web ports (SSH, AirPlay, etc.)
-web-finder --local           # Local machine only
-web-finder --tailscale       # Tailscale peers only
-web-finder --json            # JSON output
+web-finder                   # Find web services on this machine, router, and tailnet
+web-finder start             # Start sharing this machine over Tailscale Serve at boot
+web-finder stop              # Stop sharing and disable boot autostart
+web-finder status            # Check daemon, Tailscale Serve, MagicDNS, and version
+web-finder update            # Pull latest version and restart sharing
+web-finder version           # Show version
+web-finder --json            # JSON output for apps/scripts
+web-finder --debug           # Noisy diagnostics, all open ports, and no-service peers
 ```
 
 ## What it scans
 
-TCP-scans common ports, fetches HTTP `<title>` tags, and identifies running services. Catches dev servers, NAS UIs, Jupyter notebooks, Grafana, Prometheus, Gradio, and anything else serving a web page.
+Locally, Web Finder scans listening ports, fetches HTTP `<title>` tags, and identifies running services. Across Tailscale, peers publish a small manifest on port `9321`; clients fetch that manifest instead of port-scanning every peer.
 
 ```
 80  443  3000  3001  4000  4001  5000  5001  6006  7860
