@@ -65,8 +65,8 @@ cd ios && bash build-ios.sh
 - After changing iOS `Scanner.swift`, build and install to device via `xcrun devicectl`
 - Always test the full chain: manifest server output, CLI `--json` output, and actual URL accessibility in browser
 
-## API key for App Store Connect
+## App Store Connect Credentials
 
-- Key file: `~/.private_keys/AuthKey_V946Q6Y2C6.p8`
-- Key ID: `V946Q6Y2C6`
-- CLI upload not currently working (missing issuer ID / App Store Connect credentials), use Xcode Organizer instead
+- Do not commit App Store Connect API key IDs, issuer IDs, private key paths, or `.p8` filenames.
+- CLI upload requires an App Store Connect API key plus issuer ID, or a signed-in Xcode account.
+- If terminal upload fails with `App Store Connect Credentials Error`, use Xcode Organizer or configure credentials locally outside the repo.
