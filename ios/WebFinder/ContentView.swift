@@ -83,7 +83,7 @@ class ScannerModel: ObservableObject {
         scanError = nil
         ScanLog.shared.clear()
         scanTask = Task {
-            let (result, error) = await Scanner.scanAll(showAll: showAllPorts, onProgress: { progress in
+            let (result, error) = await Scanner.scanAll(showAll: showAllPorts, probeOfflinePeers: debugMode, onProgress: { progress in
                 Task { @MainActor in self.scanProgress = progress }
             }, onDevice: { device in
                 Task { @MainActor in

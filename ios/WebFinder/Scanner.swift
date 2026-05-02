@@ -137,7 +137,7 @@ enum Scanner {
 
     // MARK: - Top-level scan
 
-    static func scanAll(showAll: Bool = false, onProgress: (@Sendable (Double) -> Void)? = nil, onDevice: (@Sendable (Device) -> Void)? = nil) async -> (devices: [Device], error: String?) {
+    static func scanAll(showAll: Bool = false, probeOfflinePeers: Bool = false, onProgress: (@Sendable (Double) -> Void)? = nil, onDevice: (@Sendable (Device) -> Void)? = nil) async -> (devices: [Device], error: String?) {
         dlog("scanAll started")
         let _ = makeScanSession()
         async let gatewayResult = scanGateway()
@@ -158,7 +158,7 @@ enum Scanner {
         let myHostname = ProcessInfo.processInfo.hostName
             .components(separatedBy: ".").first?.lowercased() ?? ""
 
-        struct PeerInfo { let name: String; let ip: String; let dnsName: String; let recentlySeen: Bool; let os: String? }
+        struct PeerInfo { let name: String; let ip: String; let dnsName: String; let apiOnline: Bool; let recentlySeen: Bool; let os: String? }
 
         let now = Date()
         let isoFormatter = ISO8601DateFormatter()
@@ -186,16 +186,20 @@ enum Scanner {
                let lastSeen = isoFormatter.date(from: lastSeenStr) ?? isoFallback.date(from: lastSeenStr) {
                 recentlySeen = now.timeIntervalSince(lastSeen) < 300
             }
+            let apiOnline = (device["connectedToControl"] as? Bool)
+                ?? (device["online"] as? Bool)
+                ?? recentlySeen
 
-            return PeerInfo(name: name, ip: ip, dnsName: dnsName, recentlySeen: recentlySeen, os: os)
+            return PeerInfo(name: name, ip: ip, dnsName: dnsName, apiOnline: apiOnline, recentlySeen: recentlySeen, os: os)
         }
 
         let peersToScan = peers.sorted {
+            if $0.apiOnline != $1.apiOnline { return $0.apiOnline }
             if $0.recentlySeen != $1.recentlySeen { return $0.recentlySeen }
             return $0.name < $1.name
         }
-        let recentlySeenPeers = peersToScan.filter { $0.recentlySeen }
-        dlog("\(peers.count) peers, \(recentlySeenPeers.count) recently seen, checking manifests \(maxConcurrentPeers) at a time...")
+        let onlinePeers = peersToScan.filter { $0.apiOnline }
+        dlog("\(peers.count) peers, \(onlinePeers.count) API-online, checking manifests \(maxConcurrentPeers) at a time...")
 
         // Throttled peer scanning: max N peers at a time to avoid flooding VPN tunnel.
         let totalPeers = max(peers.count, 1)
@@ -208,10 +212,15 @@ enum Scanner {
             func addNext() -> Bool {
                 guard let peer = iterator.next() else { return false }
                 group.addTask {
+                    if !peer.apiOnline && !probeOfflinePeers {
+                        dlog("skipping offline peer \(peer.name) (\(peer.ip))")
+                        return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
+                                      os: peer.os, online: false, services: [])
+                    }
                     dlog("fetching manifest from \(peer.name) (\(peer.ip))...")
                     let services = await fetchManifest(ip: peer.ip, dnsName: peer.dnsName)
                     let finalServices = services ?? []
-                    let online = peer.recentlySeen || services != nil
+                    let online = peer.apiOnline || services != nil
                     dlog("  \(peer.name): \(finalServices.count) services from manifest, online=\(online)")
                     return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
                                   os: peer.os, online: online, services: finalServices)
