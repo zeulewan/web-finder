@@ -244,7 +244,7 @@ async function syncTailscaleServeServices({ showAll = false } = {}) {
     let target;
     try {
       const url = new URL(service.url);
-      const scheme = url.protocol === 'https:' ? 'https' : 'http';
+      const scheme = url.protocol === 'https:' ? 'https+insecure' : 'http';
       target = `${scheme}://127.0.0.1:${service.port}`;
     } catch {
       target = `http://127.0.0.1:${service.port}`;
