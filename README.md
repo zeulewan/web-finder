@@ -14,7 +14,7 @@ Menubar app that shows all discovered web services at a glance. Click any servic
 
 ## iOS
 
-Discovers services published by Web Finder clients on your tailnet. One-time OAuth setup.
+Discovers services published by Web Finder clients on your tailnet. One-time OAuth setup. Install Web Finder on each Mac/Linux device you want to see, then run `web-finder start` there.
 
 Available on the [App Store](https://apps.apple.com/app/web-finder-for-tailscale/id6759476914) (free).
 
@@ -31,6 +31,14 @@ curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh 
 ```
 
 Works on macOS (menubar app + CLI) and Linux (CLI, auto-installs Node.js if missing).
+
+Run this on every Mac/Linux device you want other devices to discover:
+
+```bash
+web-finder start
+```
+
+That starts the manifest server at boot and publishes detected local web UIs through Tailscale Serve.
 
 To uninstall:
 
@@ -56,6 +64,10 @@ web-finder --debug           # Noisy diagnostics, all open ports, and no-service
 Locally, Web Finder scans listening ports, fetches HTTP `<title>` tags, and identifies running services. Across Tailscale, peers publish a small manifest on port `9321`; clients fetch that manifest instead of port-scanning every peer.
 
 ```
-80  443  3000  3001  4000  4001  5000  5001  6006  7860
-8000-8005  8080-8082  8443  8888  9000  9001  9090  9443
+80  443  1880  3000  3001  3100  3460  4000  4001  4173
+5000  5001  5050  5173  6006  6052  7860  8000-8006
+8080-8082  8096  8123  8443  8880  8881  8888  9000
+9001  9090  9093  9443  11434  18789  19999  32400
 ```
+
+Normal output hides protocol/API-only ports and peers with no services. Use `web-finder --debug` when you need the noisy view.
