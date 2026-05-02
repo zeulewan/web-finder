@@ -54,7 +54,8 @@
   <h2>What the app does</h2>
   <ul>
     <li>Connects to the Tailscale API using OAuth credentials you provide to discover devices on your tailnet</li>
-    <li>Scans discovered devices for open web ports over your local/Tailscale network</li>
+    <li>Fetches Web Finder manifests from devices where Web Finder is installed and running</li>
+    <li>Scans local services only on the device running Web Finder</li>
     <li>Opens URLs in your default browser when you tap a service</li>
   </ul>
 
@@ -68,8 +69,9 @@
   <h2>Network access</h2>
   <ul>
     <li>The app connects to <code>api.tailscale.com</code> to authenticate with Tailscale and retrieve your device list</li>
-    <li>The app makes direct TCP connections to your Tailscale peers to scan for open ports and fetch web page titles</li>
-    <li>No other network connections are made</li>
+    <li>The app connects directly to Web Finder manifest endpoints on your Tailscale devices, normally on port <code>9321</code></li>
+    <li>The app connects to service URLs on your tailnet or local network when you open them</li>
+    <li>The iOS app does not port-scan Tailscale peers; peer services are published by Web Finder running on those peers</li>
   </ul>
 
   <h2>Third-party services</h2>
@@ -78,6 +80,6 @@
   <h2>Contact</h2>
   <p>If you have questions, open an issue at <a href="https://github.com/zeulewan/web-finder/issues">github.com/zeulewan/web-finder/issues</a></p>
 
-  <p class="updated">Last updated: February 20, 2026</p>
+  <p class="updated">Last updated: May 2, 2026</p>
 </body>
 </html>

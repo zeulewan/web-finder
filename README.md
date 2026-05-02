@@ -2,7 +2,7 @@
 
 **Find web interfaces across your network.**
 
-Stop bookmarking admin pages, docs sites, and test builds. Web Finder discovers every web service on your Tailscale peers and local network, one click away. Fully free and open source.
+Stop bookmarking admin pages, docs sites, and test builds. Web Finder discovers web services published by Web Finder clients on your Tailscale devices, plus local services on the machine running it. Fully free and open source.
 
 **[zeulewan.github.io/web-finder](https://zeulewan.github.io/web-finder/)**
 
@@ -14,7 +14,7 @@ Menubar app that shows all discovered web services at a glance. Click any servic
 
 ## iOS
 
-Scans your Tailscale peers from anywhere. One-time OAuth setup, credentials never expire.
+Discovers services published by Web Finder clients on your tailnet. One-time OAuth setup.
 
 Available on the [App Store](https://apps.apple.com/app/web-finder-for-tailscale/id6759476914) (free).
 

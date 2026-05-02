@@ -739,7 +739,7 @@
 <!-- NAV -->
 <nav>
   <span class="logo">Web Finder</span>
-  <span class="badge">v1.1.2</span>
+  <span class="badge">v1.3.1</span>
   <a class="gh" href="https://github.com/zeulewan/web-finder" target="_blank">
     <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
       <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.26 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
@@ -751,7 +751,7 @@
 <!-- HERO -->
 <div class="hero">
   <h1 class="fade-up">Find web interfaces<br>across your network</h1>
-  <p class="fade-up">Stop bookmarking admin pages, docs sites, and test builds across your network. Web Finder discovers every web service on your Tailscale peers and local network, one click away. Fully free and open source.</p>
+  <p class="fade-up">Stop bookmarking admin pages, docs sites, and test builds across your tailnet. Web Finder discovers web services published by Web Finder clients on your devices, plus local services on the machine running it. Fully free and open source.</p>
 
   <div class="platforms fade-up">
     <div class="platform-tag">
@@ -790,7 +790,7 @@
       </div>
       <details class="setup-dropdown">
         <summary>Setup guide</summary>
-        <p style="margin-top: 16px; font-size: 13px; color: var(--text-dim); max-width: 420px; margin-left: auto; margin-right: auto; line-height: 1.6;">Create a Tailscale OAuth client with <strong>Devices: Read</strong> scope, then paste the Client ID and Secret into the app. One-time setup, credentials never expire.</p>
+        <p style="margin-top: 16px; font-size: 13px; color: var(--text-dim); max-width: 420px; margin-left: auto; margin-right: auto; line-height: 1.6;">Create a Tailscale OAuth client with <strong>Devices: Read</strong> scope, then paste the Client ID and Secret into the app. Install and start Web Finder on each Mac or Linux device you want to show up.</p>
         <div class="phone-gallery" style="margin-top: 20px;">
           <div class="phone-frame-wrap">
             <div class="phone-label">Walkthrough</div>
@@ -830,14 +830,15 @@
           <div><span class="cmd">$</span> <span class="out">web-finder</span></div>
           <div>&nbsp;</div>
           <div class="dim">Local:</div>
-          <div><span class="dot-out">&#x25CF;</span>  <span class="out">cen800                        </span><span class="url">http://127.0.0.1:8000</span></div>
-          <div><span class="dot-out">&#x25CF;</span>  <span class="out">Web Finder                    </span><span class="url">http://127.0.0.1:8001</span></div>
+          <div><span class="dot-out">&#x25CF;</span>  <span class="out">Docs Preview                  </span><span class="url">http://127.0.0.1:8001</span></div>
+          <div>&nbsp;</div>
+          <div class="dim">UDM Pro:</div>
+          <div><span class="dot-out">&#x25CF;</span>  <span class="out">UniFi OS                      </span><span class="url">https://192.168.2.1:443</span></div>
           <div>&nbsp;</div>
           <div class="dim">Tailscale:</div>
-          <div><span class="dot-out">&#x25CF;</span>  <span class="out">kvm-c225         NanoKVM                 </span><span class="url">https://100.67.214.102:443</span></div>
-          <div><span class="dot-out">&#x25CF;</span>  <span class="out">openclaw         Home - Robot Docs       </span><span class="url">http://100.81.195.18:8000</span></div>
-          <div><span class="dot-out">&#x25CF;</span>  <span class="out">storage          storage - Synology NAS  </span><span class="url">https://100.106.137.64:5001</span></div>
-          <div><span class="dot-out">&#x25CF;</span>  <span class="out">workstation      Home - Robot Docs       </span><span class="url">http://100.101.214.44:8002</span></div>
+          <div><span class="dot-out">&#x25CF;</span>  <span class="out">workstation      Jellyfin                </span><span class="url">https://workstation.example.ts.net:8096/web/</span></div>
+          <div><span class="dot-out">&#x25CF;</span>  <span class="out">workstation      qBittorrent WebUI       </span><span class="url">https://workstation.example.ts.net:38080/</span></div>
+          <div><span class="dot-out">&#x25CF;</span>  <span class="out">storage          Synology NAS            </span><span class="url">https://storage.example.ts.net:5001/</span></div>
         </div>
       </div>
     </div>
@@ -864,7 +865,8 @@
       <ol class="steps">
         <li>Download from the App Store</li>
         <li>Create a Tailscale OAuth client with Devices: Read</li>
-        <li>Paste Client ID and Secret into the app</li>
+        <li>Install and run Web Finder on Mac/Linux devices you want to discover</li>
+        <li>Paste Client ID and Secret into the app, then pull to refresh</li>
       </ol>
     </div>
 
@@ -886,6 +888,7 @@
         <li>On macOS: downloads &amp; installs <code>WebFinder.app</code></li>
         <li>On Linux: installs Node.js LTS if needed</li>
         <li>Adds <code>web-finder</code> CLI to PATH</li>
+        <li>Run <code>web-finder start</code> to publish this device over Tailscale</li>
       </ol>
     </div>
 
@@ -902,19 +905,24 @@
 
 <!-- FEATURES -->
 <div class="content-section fade-up" id="features">
-  <h2>What it scans</h2>
-  <p class="section-sub">Automatically detects web interfaces across common ports.</p>
+  <h2>How discovery works</h2>
+  <p class="section-sub">Local devices detect their own web interfaces, then publish a small manifest to your tailnet.</p>
 
   <div class="features-grid">
     <div class="feature-card">
       <div class="feature-icon">&#x1F310;</div>
-      <h4>Tailscale + local</h4>
-      <p>Scans every online Tailscale peer and your local machine in parallel.</p>
+      <h4>Manifest-based discovery</h4>
+      <p>Remote devices show up when Web Finder is installed and running on them.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">&#x1F50D;</div>
-      <h4>Smart detection</h4>
-      <p>Probes 30+ common ports, fetches page titles, and deduplicates HTTP/HTTPS pairs.</p>
+      <h4>Local smart detection</h4>
+      <p>Each client scans its own listening web ports, fetches page titles, and deduplicates HTTP/HTTPS pairs.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x1F512;</div>
+      <h4>Tailnet-safe sharing</h4>
+      <p><code>web-finder start</code> publishes service links with Tailscale Serve and exposes a manifest on port 9321.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">&#x1F4CB;</div>
@@ -932,34 +940,34 @@
   <div class="cli-examples">
     <div class="cli-row">
       <span class="cmd-text">web-finder</span>
-      <span class="desc">Full scan - local + all Tailscale peers</span>
+      <span class="desc">Show local services, gateway services, and Tailscale manifests</span>
     </div>
     <div class="cli-row">
-      <span class="cmd-text">web-finder --local</span>
-      <span class="desc">Scan local machine only</span>
+      <span class="cmd-text">web-finder start</span>
+      <span class="desc">Start sharing this device over Tailscale and enable boot autostart</span>
     </div>
     <div class="cli-row">
-      <span class="cmd-text">web-finder --tailscale</span>
-      <span class="desc">Scan Tailscale peers only</span>
+      <span class="cmd-text">web-finder stop</span>
+      <span class="desc">Stop sharing and disable boot autostart</span>
     </div>
     <div class="cli-row">
-      <span class="cmd-text">web-finder --all</span>
-      <span class="desc">Include non-web ports (AirPlay, SSH, etc.)</span>
+      <span class="cmd-text">web-finder status</span>
+      <span class="desc">Check daemon, Tailscale Serve, MagicDNS, and version</span>
     </div>
     <div class="cli-row">
       <span class="cmd-text">web-finder --json</span>
       <span class="desc">Machine-readable JSON output</span>
     </div>
     <div class="cli-row">
-      <span class="cmd-text">web-finder --local --json</span>
-      <span class="desc">Local only, JSON - great for agents</span>
+      <span class="cmd-text">web-finder --debug</span>
+      <span class="desc">Verbose output, diagnostics, and peers with no published services</span>
     </div>
     <div class="cli-row">
-      <span class="cmd-text">web-finder --update</span>
+      <span class="cmd-text">web-finder update</span>
       <span class="desc">Pull latest CLI (and app on macOS)</span>
     </div>
     <div class="cli-row">
-      <span class="cmd-text">web-finder --version</span>
+      <span class="cmd-text">web-finder version</span>
       <span class="desc">Show installed version and commit</span>
     </div>
   </div>
@@ -983,17 +991,17 @@
 
     <details class="faq-item">
       <summary>Does it work without Tailscale?</summary>
-      <div class="faq-answer">Yes, on macOS and Linux. Use <code>web-finder --local</code> on the CLI or the macOS menubar app to discover web services running on your machine. Tailscale is only needed for scanning remote peers. Local-only scanning on iOS is not yet available but is planned for a future update.</div>
+      <div class="faq-answer">Yes, on macOS and Linux. Run <code>web-finder</code> on the CLI or use the macOS menubar app to discover web services running on that machine. Tailscale is needed for remote devices, and those remote devices need Web Finder running so they can publish their manifests.</div>
     </details>
 
     <details class="faq-item">
       <summary>What ports does Web Finder scan?</summary>
-      <div class="faq-answer">It scans 30+ common web ports including 80, 443, 3000-3001, 4000-4001, 5000-5001, 6006, 7860, 8000-8005, 8080-8082, 8443, 8888, 9000-9001, 9090, and 9443. Use <code>--all</code> to also include non-web ports like SSH and AirPlay.</div>
+      <div class="faq-answer">On each Mac or Linux device, Web Finder scans its own listening web ports, fetches titles, and publishes the result as a manifest. Other clients fetch that manifest instead of port-scanning the peer. Debug mode shows extra diagnostics and peers with no published services.</div>
     </details>
 
     <details class="faq-item">
       <summary>Is my data sent to any servers?</summary>
-      <div class="faq-answer">No. OAuth credentials are stored locally on your device. The app only connects to <code>api.tailscale.com</code> to fetch your device list using your own credentials. There is no analytics, tracking, or telemetry of any kind.</div>
+      <div class="faq-answer">No. OAuth credentials are stored locally on your device. The app connects to <code>api.tailscale.com</code> to fetch your device list, then connects directly to Web Finder manifest endpoints and service URLs on your own tailnet. There is no analytics, tracking, or telemetry.</div>
     </details>
 
     <details class="faq-item">
