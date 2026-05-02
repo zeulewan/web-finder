@@ -50,6 +50,11 @@ cd ios && bash build-ios.sh
   6. When Organizer opens, select the archive under `Archives`, click `Distribute App`, choose `App Store Connect`, then upload.
   7. Keep default automatic signing/team `25QMAKVCBN`; enable symbol upload if offered; do not rely on Xcode to silently manage version/build numbers.
   8. Wait for App Store Connect build processing, then go to App Store Connect > Web Finder > version `X.Y.Z`, select the uploaded build, fill release notes/compliance, and submit for review or TestFlight as needed.
+  - Terminal archive command that works:
+    `xcodebuild archive -project ios/WebFinder.xcodeproj -scheme WebFinder -configuration Release -archivePath ios/build/appstore/WebFinder-X.Y.Z.xcarchive -destination 'generic/platform=iOS' -allowProvisioningUpdates`
+  - Terminal upload can be attempted with:
+    `xcodebuild -exportArchive -archivePath ios/build/appstore/WebFinder-X.Y.Z.xcarchive -exportOptionsPlist ios/exportOptions.plist -exportPath ios/build/appstore/export -allowProvisioningUpdates`
+  - If terminal upload fails with `App Store Connect Credentials Error`, use Xcode Organizer or provide an App Store Connect API issuer ID. The existing key file is not enough by itself.
 - **Manifest server on workstation**: `systemctl --user restart web-finder-serve` after updating `~/.web-finder/`
 - Versions must be bumped in: `cli/package.json`, `macos/Info.plist`, `ios/WebFinder/Info.plist`, `ios/WebFinder.xcodeproj/project.pbxproj`
 
@@ -64,4 +69,4 @@ cd ios && bash build-ios.sh
 
 - Key file: `~/.private_keys/AuthKey_V946Q6Y2C6.p8`
 - Key ID: `V946Q6Y2C6`
-- CLI upload not currently working (missing issuer ID), use Xcode Organizer instead
+- CLI upload not currently working (missing issuer ID / App Store Connect credentials), use Xcode Organizer instead
