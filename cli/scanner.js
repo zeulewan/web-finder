@@ -40,6 +40,7 @@ const TAILSCALE_PATHS = [
   '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
   '/usr/local/bin/tailscale',
   '/opt/homebrew/bin/tailscale',
+  '/volume1/@appstore/Tailscale/bin/tailscale',
 ];
 
 // ---- helpers ----------------------------------------------------------------

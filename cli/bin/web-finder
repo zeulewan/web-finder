@@ -28,6 +28,7 @@ const TAILSCALE_PATHS = [
   '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
   '/usr/local/bin/tailscale',
   '/opt/homebrew/bin/tailscale',
+  '/volume1/@appstore/Tailscale/bin/tailscale',
 ];
 
 function quoteShell(str) {
@@ -54,6 +55,19 @@ function execTailscale(args, options = {}) {
   return execSync(`${quoteShell(cmd)} ${args}`, { encoding: 'utf8', ...options });
 }
 
+function hasCommand(cmd) {
+  try {
+    execSync(`command -v ${cmd}`, { encoding: 'utf8' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isSynology() {
+  return fs.existsSync('/etc/synoinfo.conf') || fs.existsSync('/usr/syno');
+}
+
 function versionString() {
   let commit = '';
   try { commit = execSync('git rev-parse --short HEAD', { cwd: repoRoot, encoding: 'utf8' }).trim(); } catch {}
@@ -61,7 +75,8 @@ function versionString() {
 }
 
 function serviceStatus() {
-  if (process.platform === 'darwin') {
+  const info = getAutostartInfo();
+  if (info.type === 'launchd') {
     try {
       const out = execSync(`launchctl print gui/${process.getuid()}/com.zeul.web-finder-serve`, { encoding: 'utf8' });
       const pid = out.match(/\bpid = (\d+)/)?.[1] || null;
@@ -70,6 +85,17 @@ function serviceStatus() {
     } catch {
       return { installed: false, active: false, pid: null };
     }
+  }
+
+  if (info.type === 'cron') {
+    const pid = fs.existsSync(info.pidfile) ? fs.readFileSync(info.pidfile, 'utf8').trim() : null;
+    if (pid) {
+      try {
+        execSync(`kill -0 ${pid}`, { encoding: 'utf8' });
+        return { installed: true, active: true, pid };
+      } catch {}
+    }
+    return { installed: fs.existsSync(info.pidfile), active: false, pid: null };
   }
 
   try {
@@ -186,6 +212,13 @@ function getAutostartInfo() {
       nodePath, binPath,
     };
   }
+  if (isSynology() || !hasCommand('systemctl')) {
+    return {
+      type: 'cron',
+      pidfile: path.join(os.homedir(), '.web-finder-serve.pid'),
+      nodePath, binPath,
+    };
+  }
   return {
     type: 'systemd',
     unit: path.join(os.homedir(), '.config', 'systemd', 'user', 'web-finder-serve.service'),
@@ -201,6 +234,30 @@ function setupTailscaleServe() {
   } catch (e) {
     console.error('Tailscale Serve setup skipped:', e.message);
   }
+}
+
+async function syncTailscaleServeServices({ showAll = false } = {}) {
+  const services = await scanLocalSS({ showAll });
+  let count = 0;
+  for (const service of services) {
+    if (!service.port || service.port === MANIFEST_PORT) continue;
+    let target;
+    try {
+      const url = new URL(service.url);
+      const scheme = url.protocol === 'https:' ? 'https' : 'http';
+      target = `${scheme}://127.0.0.1:${service.port}`;
+    } catch {
+      target = `http://127.0.0.1:${service.port}`;
+    }
+    try {
+      execTailscale(`serve --bg --https=${service.port} ${quoteShell(target)}`);
+      count += 1;
+    } catch (e) {
+      console.error(`Tailscale Serve setup skipped for ${service.title || `:${service.port}`}: ${e.message}`);
+    }
+  }
+  if (count > 0) console.log(`Tailscale Serve enabled for ${count} local service(s).`);
+  return count;
 }
 
 function removeTailscaleServe() {
@@ -241,6 +298,29 @@ function setupAutostart() {
       try { execSync(`launchctl unload "${info.plist}" 2>/dev/null`, { encoding: 'utf8' }); } catch {}
       execSync(`launchctl load "${info.plist}"`, { encoding: 'utf8' });
       console.log('Autostart enabled (LaunchAgent).');
+    } else if (info.type === 'cron') {
+      const marker = '# web-finder-serve';
+      const cronLine = `@reboot ${quoteShell(info.nodePath)} ${quoteShell(info.binPath)} serve --host 127.0.0.1 >> /tmp/web-finder-serve.log 2>&1 ${marker}`;
+      let existing = '';
+      try { existing = execSync('crontab -l 2>/dev/null', { encoding: 'utf8' }); } catch {}
+      const next = existing
+        .split('\n')
+        .filter(line => line.trim() && !line.includes(marker))
+        .concat(cronLine)
+        .join('\n') + '\n';
+      const tmp = path.join(os.tmpdir(), `web-finder-cron-${process.pid}`);
+      fs.writeFileSync(tmp, next);
+      execSync(`crontab ${quoteShell(tmp)}`, { encoding: 'utf8' });
+      fs.unlinkSync(tmp);
+      if (fs.existsSync(info.pidfile)) {
+        const pid = fs.readFileSync(info.pidfile, 'utf8').trim();
+        if (pid) {
+          try { execSync(`kill ${pid}`, { encoding: 'utf8' }); } catch {}
+        }
+      }
+      const startCmd = `nohup ${quoteShell(info.nodePath)} ${quoteShell(info.binPath)} serve --host 127.0.0.1 >> /tmp/web-finder-serve.log 2>&1 & echo $! > ${quoteShell(info.pidfile)}`;
+      execSync(startCmd, { encoding: 'utf8' });
+      console.log('Autostart enabled (cron).');
     } else {
       const unit = `[Unit]
 Description=web-finder manifest server
@@ -277,6 +357,26 @@ function removeAutostart() {
       } else {
         console.log('Autostart was not enabled.');
       }
+    } else if (info.type === 'cron') {
+      const marker = '# web-finder-serve';
+      let existing = '';
+      try { existing = execSync('crontab -l 2>/dev/null', { encoding: 'utf8' }); } catch {}
+      const next = existing
+        .split('\n')
+        .filter(line => line.trim() && !line.includes(marker))
+        .join('\n');
+      const tmp = path.join(os.tmpdir(), `web-finder-cron-${process.pid}`);
+      fs.writeFileSync(tmp, next ? `${next}\n` : '');
+      execSync(`crontab ${quoteShell(tmp)}`, { encoding: 'utf8' });
+      fs.unlinkSync(tmp);
+      if (fs.existsSync(info.pidfile)) {
+        const pid = fs.readFileSync(info.pidfile, 'utf8').trim();
+        if (pid) {
+          try { execSync(`kill ${pid}`, { encoding: 'utf8' }); } catch {}
+        }
+        fs.unlinkSync(info.pidfile);
+      }
+      console.log('Autostart disabled.');
     } else {
       try { execSync('systemctl --user disable --now web-finder-serve', { encoding: 'utf8' }); } catch {}
       if (fs.existsSync(info.unit)) fs.unlinkSync(info.unit);
@@ -465,10 +565,13 @@ if (args[0] === 'serve') {
   server.listen(servePort, serveHost, () => {
     console.log(`web-finder manifest server listening on ${serveHost}:${servePort}`);
     console.log(`Endpoint: http://localhost:${servePort}${MANIFEST_PATH}`);
-    if (serveHost === '127.0.0.1' && servePort === MANIFEST_PORT && !noTsServe) {
-      setupTailscaleServe();
-    }
-    refreshManifestCache().catch(() => {});
+    (async () => {
+      if (serveHost === '127.0.0.1' && servePort === MANIFEST_PORT && !noTsServe) {
+        setupTailscaleServe();
+        await syncTailscaleServeServices({ showAll });
+      }
+      await refreshManifestCache();
+    })().catch(e => console.error('Initial manifest refresh failed:', e.message));
     console.log('Press Ctrl+C to stop.');
   });
 
