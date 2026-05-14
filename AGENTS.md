@@ -15,6 +15,7 @@ Network service discovery tool for Tailscale networks. CLI, macOS menu bar app, 
 
 ## Release
 
+- See `docs/release.md` for the full release, App Store upload, and App Store Connect submission procedure.
 - Use `scripts/bump-version.sh X.Y.Z [IOS_BUILD]` for version bumps.
 - Use `scripts/release.sh X.Y.Z [IOS_BUILD]` for CLI/macOS GitHub releases.
 - Use `scripts/archive-ios-appstore.sh X.Y.Z` to create an App Store archive/export attempt. For CLI upload, set `APP_STORE_CONNECT_KEY_PATH`, `APP_STORE_CONNECT_KEY_ID`, and `APP_STORE_CONNECT_ISSUER_ID`, or use a signed-in Xcode account.

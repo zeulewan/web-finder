@@ -40,6 +40,8 @@ web-finder start
 
 That starts the manifest server at boot and publishes detected local web UIs through Tailscale Serve.
 
+Release and App Store submission notes for maintainers live in [docs/release.md](docs/release.md).
+
 To uninstall:
 
 ```bash

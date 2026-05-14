@@ -44,6 +44,7 @@ scripts/archive-ios-appstore.sh X.Y.Z
 
 ## Deploying
 
+- Full release notes and App Store Connect details live in `docs/release.md`.
 - **CLI/macOS**: use `scripts/release.sh X.Y.Z [IOS_BUILD]` for GitHub releases - users update via `web-finder update`
 - **iOS App Store**: `ios/build-ios.sh` creates an unsigned IPA for local/manual use; it is **not** the App Store upload path.
   1. Bump iOS version/build in `ios/WebFinder.xcodeproj/project.pbxproj` and `ios/WebFinder/Info.plist`. App Store uploads need a new `CFBundleVersion` for every upload; public updates need a new `CFBundleShortVersionString`.
