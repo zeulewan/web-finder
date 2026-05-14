@@ -518,6 +518,9 @@ if (args[0] === 'serve') {
   let manifestRefresh = null;
 
   async function buildManifest() {
+    if (serveHost === '127.0.0.1' && servePort === MANIFEST_PORT && !noTsServe) {
+      await syncTailscaleServeServices({ showAll });
+    }
     const services = await scanLocalSS({ showAll, tailnetOnly: true });
     return {
       version:  1,
@@ -575,7 +578,6 @@ if (args[0] === 'serve') {
     (async () => {
       if (serveHost === '127.0.0.1' && servePort === MANIFEST_PORT && !noTsServe) {
         setupTailscaleServe();
-        await syncTailscaleServeServices({ showAll });
       }
       await refreshManifestCache();
     })().catch(e => console.error('Initial manifest refresh failed:', e.message));

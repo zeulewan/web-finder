@@ -13,7 +13,7 @@ Network service discovery tool for Tailscale networks. CLI, macOS menu bar app, 
 
 - **Default discovery model**: Local clients scan their own machine; remote clients fetch manifests from peers instead of port-scanning them. A peer only shows remote services after Web Finder is installed and `web-finder start` has been run on that peer.
 - **Manifest server** (`web-finder serve`, normally launched by `web-finder start`): HTTP server bound to `127.0.0.1:9321` that dynamically scans localhost and serves `/.well-known/web-finder.json`.
-- **Tailscale Serve publishing**: `web-finder start` enables Tailscale Serve for the manifest and detected local web UIs. HTTP backends use `http://127.0.0.1:PORT`; HTTPS/self-signed backends use `https+insecure://127.0.0.1:PORT`.
+- **Tailscale Serve publishing**: `web-finder start` enables Tailscale Serve for the manifest and detected local web UIs. The manifest server re-syncs Serve mappings during manifest refreshes so services started after boot can appear remotely. HTTP backends use `http://127.0.0.1:PORT`; HTTPS/self-signed backends use `https+insecure://127.0.0.1:PORT`.
 - **Tailscale serve detection**: The manifest server parses `tailscale serve status` to detect HTTPS proxies and reports `https://` URLs for those ports. Clients use the peer's DNS name (not raw IP) for HTTPS since TLS certs are issued for `.ts.net`.
 - **MagicDNS fallback**: If MagicDNS lookup fails, clients may use IP+SNI fallback for manifest fetches and warn that clickable `.ts.net` links need `tailscale set --accept-dns=true`.
 - **iOS peer scan behavior**: Normal scans skip API-offline peers. Debug mode includes more diagnostics/noisy peers.
