@@ -60,7 +60,7 @@ cd ios && bash build-ios.sh
     `xcodebuild -exportArchive -archivePath ios/build/appstore/WebFinder-X.Y.Z.xcarchive -exportOptionsPlist ios/exportOptions.plist -exportPath ios/build/appstore/export -allowProvisioningUpdates`
   - If terminal upload fails with `App Store Connect Credentials Error`, use Xcode Organizer or provide an App Store Connect API issuer ID. Do not document local key filenames/paths in this repo.
 - **Manifest/server rollout**: Prefer `web-finder update` on the target machine. It pulls latest, rebuilds/updates the macOS app when applicable, restarts sharing, and reapplies Tailscale Serve. Use `web-finder start` to enable sharing on a fresh install.
-- Versions must be bumped in: `cli/package.json`, `macos/Info.plist`, `ios/WebFinder/Info.plist`, `ios/WebFinder.xcodeproj/project.pbxproj`
+- Bump versions with `scripts/bump-version.sh X.Y.Z [IOS_BUILD]`. It updates `cli/package.json`, `macos/Info.plist`, `ios/WebFinder/Info.plist`, `ios/WebFinder.xcodeproj/project.pbxproj`, and the website badge.
 
 ## Testing changes
 
