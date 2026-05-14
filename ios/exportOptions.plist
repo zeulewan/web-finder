@@ -4,6 +4,8 @@
 <dict>
     <key>method</key>
     <string>app-store-connect</string>
+    <key>manageAppVersionAndBuildNumber</key>
+    <false/>
     <key>teamID</key>
     <string>25QMAKVCBN</string>
     <key>signingStyle</key>

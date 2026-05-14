@@ -56,6 +56,8 @@ scripts/archive-ios-appstore.sh X.Y.Z
   8. Wait for App Store Connect build processing, then go to App Store Connect > Web Finder > version `X.Y.Z`, select the uploaded build, fill release notes/compliance, and submit for review or TestFlight as needed.
   - Terminal archive/upload helper:
     `scripts/archive-ios-appstore.sh X.Y.Z`
+  - Terminal App Store Connect submission helper:
+    `scripts/submit-ios-appstore.py X.Y.Z`
   - For CLI upload, set `APP_STORE_CONNECT_KEY_PATH`, `APP_STORE_CONNECT_KEY_ID`, and `APP_STORE_CONNECT_ISSUER_ID`. If terminal upload fails with `App Store Connect Credentials Error`, use Xcode Organizer or configure those credentials locally. Do not document local key filenames/paths in this repo.
 - **Manifest/server rollout**: Prefer `web-finder update` on the target machine. It pulls latest, rebuilds/updates the macOS app when applicable, restarts sharing, and reapplies Tailscale Serve. Use `web-finder start` to enable sharing on a fresh install.
 - Bump versions with `scripts/bump-version.sh X.Y.Z [IOS_BUILD]`. It updates `cli/package.json`, `macos/Info.plist`, `ios/WebFinder/Info.plist`, `ios/WebFinder.xcodeproj/project.pbxproj`, and the website badge.
@@ -73,4 +75,5 @@ scripts/archive-ios-appstore.sh X.Y.Z
 
 - Do not commit App Store Connect API key IDs, issuer IDs, private key paths, or `.p8` filenames.
 - CLI upload requires an App Store Connect API key plus issuer ID, or a signed-in Xcode account. `scripts/archive-ios-appstore.sh` reads `APP_STORE_CONNECT_KEY_PATH`, `APP_STORE_CONNECT_KEY_ID`, and `APP_STORE_CONNECT_ISSUER_ID`.
+- App Store submission after upload uses the same env vars with `scripts/submit-ios-appstore.py X.Y.Z`. The script creates/updates the App Store version, picks the latest valid App Store-eligible build unless `--build-number` is provided, updates the `en-US` What's New text, adds the version to a review submission, and sends it to review.
 - If terminal upload fails with `App Store Connect Credentials Error`, use Xcode Organizer or configure credentials locally outside the repo.
