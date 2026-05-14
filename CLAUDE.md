@@ -38,13 +38,13 @@ cd ios && xcodebuild -project WebFinder.xcodeproj -scheme WebFinder \
 xcrun devicectl device install app --device DEVICE_ID \
     ~/Library/Developer/Xcode/DerivedData/WebFinder-*/Build/Products/Debug-iphoneos/WebFinder.app
 
-# iOS App Store archive for local/manual IPA builds, not App Store upload
-cd ios && bash build-ios.sh
+# iOS App Store archive/upload attempt
+scripts/archive-ios-appstore.sh X.Y.Z
 ```
 
 ## Deploying
 
-- **CLI/macOS**: `gh release create vX.Y.Z macos/WebFinder.app.zip` - users update via `web-finder update`
+- **CLI/macOS**: use `scripts/release.sh X.Y.Z [IOS_BUILD]` for GitHub releases - users update via `web-finder update`
 - **iOS App Store**: `ios/build-ios.sh` creates an unsigned IPA for local/manual use; it is **not** the App Store upload path.
   1. Bump iOS version/build in `ios/WebFinder.xcodeproj/project.pbxproj` and `ios/WebFinder/Info.plist`. App Store uploads need a new `CFBundleVersion` for every upload; public updates need a new `CFBundleShortVersionString`.
   2. In App Store Connect, create the new app version first: Apps > Web Finder > add iOS version `X.Y.Z`.
@@ -54,10 +54,8 @@ cd ios && bash build-ios.sh
   6. When Organizer opens, select the archive under `Archives`, click `Distribute App`, choose `App Store Connect`, then upload.
   7. Keep default automatic signing/team `25QMAKVCBN`; enable symbol upload if offered; do not rely on Xcode to silently manage version/build numbers.
   8. Wait for App Store Connect build processing, then go to App Store Connect > Web Finder > version `X.Y.Z`, select the uploaded build, fill release notes/compliance, and submit for review or TestFlight as needed.
-  - Terminal archive command that works:
-    `xcodebuild archive -project ios/WebFinder.xcodeproj -scheme WebFinder -configuration Release -archivePath ios/build/appstore/WebFinder-X.Y.Z.xcarchive -destination 'generic/platform=iOS' -allowProvisioningUpdates`
-  - Terminal upload can be attempted with:
-    `xcodebuild -exportArchive -archivePath ios/build/appstore/WebFinder-X.Y.Z.xcarchive -exportOptionsPlist ios/exportOptions.plist -exportPath ios/build/appstore/export -allowProvisioningUpdates`
+  - Terminal archive/upload helper:
+    `scripts/archive-ios-appstore.sh X.Y.Z`
   - If terminal upload fails with `App Store Connect Credentials Error`, use Xcode Organizer or provide an App Store Connect API issuer ID. Do not document local key filenames/paths in this repo.
 - **Manifest/server rollout**: Prefer `web-finder update` on the target machine. It pulls latest, rebuilds/updates the macOS app when applicable, restarts sharing, and reapplies Tailscale Serve. Use `web-finder start` to enable sharing on a fresh install.
 - Bump versions with `scripts/bump-version.sh X.Y.Z [IOS_BUILD]`. It updates `cli/package.json`, `macos/Info.plist`, `ios/WebFinder/Info.plist`, `ios/WebFinder.xcodeproj/project.pbxproj`, and the website badge.
