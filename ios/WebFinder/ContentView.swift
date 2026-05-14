@@ -4,8 +4,11 @@ import SafariServices
 enum AppBuild {
     static let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
     static let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
-    static let kind = Bundle.main.infoDictionary?["WFBuildKind"] as? String ?? "DEV"
-    static let label = "\(kind) \(version) (\(build))"
+    static let kind = Bundle.main.infoDictionary?["WFBuildKind"] as? String ?? ""
+    static let label: String = {
+        let base = "\(version) (\(build))"
+        return kind.isEmpty || kind == "APPSTORE" ? base : "\(kind) \(base)"
+    }()
 }
 
 // MARK: - Safari in-app browser

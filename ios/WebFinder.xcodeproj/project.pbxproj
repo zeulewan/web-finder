@@ -279,6 +279,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				WF_BUILD_KIND = DEV;
 			};
 			name = Debug;
 		};
@@ -305,6 +306,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				WF_BUILD_KIND = APPSTORE;
 			};
 			name = Release;
 		};

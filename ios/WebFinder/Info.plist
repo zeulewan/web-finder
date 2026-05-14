@@ -41,6 +41,6 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>WFBuildKind</key>
-	<string>DEV</string>
+	<string>$(WF_BUILD_KIND)</string>
 </dict>
 </plist>
