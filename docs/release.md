@@ -70,7 +70,7 @@ scripts/submit-ios-appstore.py X.Y.Z
 
 The script uses the same App Store Connect env vars as the upload script. It:
 
-- Finds the App Store Connect app from bundle ID `com.zeulewan.WebFinder`.
+- Finds the App Store Connect app from bundle ID `com.zeul.webfinder.ios`.
 - Creates the iOS App Store version if it does not exist.
 - Selects the latest `VALID` and `APP_STORE_ELIGIBLE` uploaded build.
 - Attaches that build to the version.

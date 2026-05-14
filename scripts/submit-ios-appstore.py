@@ -203,7 +203,7 @@ def submit(version_id: str, app_id: str) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("version")
-    parser.add_argument("--bundle-id", default="com.zeulewan.WebFinder")
+    parser.add_argument("--bundle-id", default="com.zeul.webfinder.ios")
     parser.add_argument("--build-number", help="Specific App Store Connect build number to use")
     parser.add_argument("--whats-new", default=DEFAULT_WHATS_NEW)
     parser.add_argument("--no-submit", action="store_true")
