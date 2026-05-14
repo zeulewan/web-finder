@@ -56,7 +56,7 @@ scripts/archive-ios-appstore.sh X.Y.Z
   8. Wait for App Store Connect build processing, then go to App Store Connect > Web Finder > version `X.Y.Z`, select the uploaded build, fill release notes/compliance, and submit for review or TestFlight as needed.
   - Terminal archive/upload helper:
     `scripts/archive-ios-appstore.sh X.Y.Z`
-  - If terminal upload fails with `App Store Connect Credentials Error`, use Xcode Organizer or provide an App Store Connect API issuer ID. Do not document local key filenames/paths in this repo.
+  - For CLI upload, set `APP_STORE_CONNECT_KEY_PATH`, `APP_STORE_CONNECT_KEY_ID`, and `APP_STORE_CONNECT_ISSUER_ID`. If terminal upload fails with `App Store Connect Credentials Error`, use Xcode Organizer or configure those credentials locally. Do not document local key filenames/paths in this repo.
 - **Manifest/server rollout**: Prefer `web-finder update` on the target machine. It pulls latest, rebuilds/updates the macOS app when applicable, restarts sharing, and reapplies Tailscale Serve. Use `web-finder start` to enable sharing on a fresh install.
 - Bump versions with `scripts/bump-version.sh X.Y.Z [IOS_BUILD]`. It updates `cli/package.json`, `macos/Info.plist`, `ios/WebFinder/Info.plist`, `ios/WebFinder.xcodeproj/project.pbxproj`, and the website badge.
 
@@ -72,5 +72,5 @@ scripts/archive-ios-appstore.sh X.Y.Z
 ## App Store Connect Credentials
 
 - Do not commit App Store Connect API key IDs, issuer IDs, private key paths, or `.p8` filenames.
-- CLI upload requires an App Store Connect API key plus issuer ID, or a signed-in Xcode account.
+- CLI upload requires an App Store Connect API key plus issuer ID, or a signed-in Xcode account. `scripts/archive-ios-appstore.sh` reads `APP_STORE_CONNECT_KEY_PATH`, `APP_STORE_CONNECT_KEY_ID`, and `APP_STORE_CONNECT_ISSUER_ID`.
 - If terminal upload fails with `App Store Connect Credentials Error`, use Xcode Organizer or configure credentials locally outside the repo.
