@@ -76,8 +76,12 @@ if [[ "$OS" == "mac" ]]; then
     info "Downloading WebFinder.app..."
     if curl -fsSL -o "$APP_ZIP" "$APP_URL"; then
         # Remove old version if present
-        rm -rf "/Applications/WebFinder.app"
-        sudo unzip -q "$APP_ZIP" -d "/Applications/"
+        if [ -d "/Applications/WebFinder.app" ]; then
+            sudo rm -rf "/Applications/WebFinder.app"
+        fi
+        sudo rm -rf "/Applications/__MACOSX"
+        sudo unzip -oq "$APP_ZIP" -d "/Applications/"
+        sudo rm -rf "/Applications/__MACOSX"
         rm -f "$APP_ZIP"
         info "App installed to /Applications/WebFinder.app"
         info "Open it from Finder or run: open /Applications/WebFinder.app"
