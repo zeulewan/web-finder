@@ -30,18 +30,55 @@ fi
 
 info "Detected: $OS"
 
+if [[ "$OS" == "mac" ]]; then
+    command -v brew &>/dev/null || error "Homebrew is required on macOS. Install it from https://brew.sh and re-run."
+
+    info "Installing WebFinder.app and CLI with Homebrew..."
+    if brew list --formula zeulewan/tap/web-finder &>/dev/null || brew list --formula web-finder &>/dev/null; then
+        brew upgrade zeulewan/tap/web-finder || true
+    else
+        brew install zeulewan/tap/web-finder
+    fi
+
+    if brew list --cask zeulewan/tap/webfinder &>/dev/null || brew list --cask webfinder &>/dev/null; then
+        brew upgrade --cask zeulewan/tap/webfinder || true
+    else
+        brew install --cask zeulewan/tap/webfinder
+    fi
+
+    legacy_bin="/usr/local/bin/web-finder"
+    if [ -L "$legacy_bin" ]; then
+        legacy_target="$(readlink "$legacy_bin")"
+        case "$legacy_target" in
+            "$INSTALL_DIR"/*)
+                sudo rm -f "$legacy_bin"
+                info "Removed legacy CLI symlink at $legacy_bin"
+                ;;
+        esac
+    fi
+
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        rm -rf "$INSTALL_DIR"
+        info "Removed legacy install at $INSTALL_DIR"
+    fi
+
+    echo ""
+    echo -e "${GREEN}Done!${NC}"
+    echo ""
+    echo "  CLI:  web-finder --help"
+    echo "  App:  open /Applications/WebFinder.app"
+    echo ""
+    exit 0
+fi
+
 # Check for git
 command -v git &>/dev/null || error "git is required. Install it and re-run."
 
 # Check for Node.js
 if ! command -v node &>/dev/null; then
-    if [[ "$OS" == "linux" ]]; then
-        warn "Node.js not found. Installing via NodeSource..."
-        curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-        sudo apt-get install -y nodejs
-    else
-        error "Node.js is required. Install from https://nodejs.org and re-run."
-    fi
+    warn "Node.js not found. Installing via NodeSource..."
+    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+    sudo apt-get install -y nodejs
 fi
 
 NODE_VER=$(node --version)
@@ -67,34 +104,8 @@ fi
 
 info "CLI installed: web-finder"
 
-# Mac: download and install the pre-built GUI app
-if [[ "$OS" == "mac" ]]; then
-    echo ""
-    APP_URL="https://github.com/zeulewan/web-finder/releases/latest/download/WebFinder.app.zip"
-    APP_ZIP="$INSTALL_DIR/WebFinder.app.zip"
-
-    info "Downloading WebFinder.app..."
-    if curl -fsSL -o "$APP_ZIP" "$APP_URL"; then
-        # Remove old version if present
-        if [ -d "/Applications/WebFinder.app" ]; then
-            sudo rm -rf "/Applications/WebFinder.app"
-        fi
-        sudo rm -rf "/Applications/__MACOSX"
-        sudo unzip -oq "$APP_ZIP" -d "/Applications/"
-        sudo rm -rf "/Applications/__MACOSX"
-        rm -f "$APP_ZIP"
-        info "App installed to /Applications/WebFinder.app"
-        info "Open it from Finder or run: open /Applications/WebFinder.app"
-    else
-        warn "Failed to download app - skipping GUI install."
-    fi
-fi
-
 echo ""
 echo -e "${GREEN}Done!${NC}"
 echo ""
 echo "  CLI:  web-finder --help"
-if [[ "$OS" == "mac" ]]; then
-echo "  App:  open /Applications/WebFinder.app"
-fi
 echo ""

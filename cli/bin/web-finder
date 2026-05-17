@@ -70,7 +70,11 @@ function isSynology() {
 
 function versionString() {
   let commit = '';
-  try { commit = execSync('git rev-parse --short HEAD', { cwd: repoRoot, encoding: 'utf8' }).trim(); } catch {}
+  try {
+    if (fs.existsSync(path.join(repoRoot, '.git'))) {
+      commit = execSync('git rev-parse --short HEAD', { cwd: repoRoot, encoding: 'utf8' }).trim();
+    }
+  } catch {}
   return commit ? `${pkg.version} (${commit})` : pkg.version;
 }
 

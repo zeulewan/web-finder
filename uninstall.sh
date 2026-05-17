@@ -13,6 +13,18 @@ echo "  WebFinder for Tailscale - uninstaller"
 echo "  ========================"
 echo ""
 
+if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null; then
+    if brew list --cask zeulewan/tap/webfinder &>/dev/null || brew list --cask webfinder &>/dev/null; then
+        brew uninstall --cask zeulewan/tap/webfinder
+        info "Removed Homebrew cask webfinder"
+    fi
+
+    if brew list --formula zeulewan/tap/web-finder &>/dev/null || brew list --formula web-finder &>/dev/null; then
+        brew uninstall zeulewan/tap/web-finder
+        info "Removed Homebrew formula web-finder"
+    fi
+fi
+
 # Remove CLI symlink
 if [ -L "/usr/local/bin/web-finder" ]; then
     if [ -w "/usr/local/bin" ]; then
@@ -33,7 +45,7 @@ else
     info "~/.web-finder not found, skipping"
 fi
 
-# Remove macOS app
+# Remove legacy/manual macOS app
 if [ -d "/Applications/WebFinder.app" ]; then
     sudo rm -rf "/Applications/WebFinder.app"
     info "Removed /Applications/WebFinder.app"

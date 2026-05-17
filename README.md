@@ -26,13 +26,13 @@ Available on the [App Store](https://apps.apple.com/app/web-finder-for-tailscale
 
 ## Install
 
-On macOS, install the signed and notarized menu bar app with Homebrew:
+On macOS, install the signed and notarized menu bar app plus CLI with Homebrew:
 
 ```bash
 brew install --cask zeulewan/tap/webfinder
 ```
 
-To install the CLI and publish this Mac/Linux device's local web services to your tailnet, use the installer:
+On Linux, install the CLI publisher:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash
