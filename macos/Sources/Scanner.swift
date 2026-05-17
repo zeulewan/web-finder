@@ -535,7 +535,7 @@ enum Scanner {
             }
             let conn = NWConnection(
                 host: NWEndpoint.Host(host),
-                port: NWEndpoint.Port(rawValue: UInt16(port))!,
+                port: NWEndpoint.Port(rawValue: UInt16(port)) ?? .http,
                 using: .tcp
             )
             conn.stateUpdateHandler = { state in
@@ -560,7 +560,7 @@ enum Scanner {
                 group.addTask {
                     // If we have a known name from pgrep, use it directly
                     if let projectName = hints[port] {
-                        let url = URL(string: "http://\(host):\(port)")!
+                        guard let url = URL(string: "http://\(host):\(port)") else { return nil }
                         return WebService(title: projectName, port: port, url: url, isHTTPS: false)
                     }
                     if let svc = await fetchTitle(host: host, port: port) { return svc }
@@ -568,7 +568,7 @@ enum Scanner {
                     guard showAll else { return nil }
                     let name = lookup[port] ?? "Port \(port)"
                     let scheme = httpsFirstPorts.contains(port) ? "https" : "http"
-                    let url = URL(string: "\(scheme)://\(host):\(port)")!
+                    guard let url = URL(string: "\(scheme)://\(host):\(port)") else { return nil }
                     return WebService(title: name, port: port, url: url, isHTTPS: httpsFirstPorts.contains(port))
                 }
             }

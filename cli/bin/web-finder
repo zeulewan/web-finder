@@ -17,7 +17,7 @@ const { execSync } = require('child_process');
 // Resolve symlinks so scanner.js is found even when binary is symlinked to /usr/local/bin
 const realBin  = fs.realpathSync(__filename);
 const repoRoot = path.join(path.dirname(realBin), '..');
-const { scanLocal, scanLocalSS, scanTailscale, scanGateway, MANIFEST_PORT, MANIFEST_PATH } = require(path.join(repoRoot, 'scanner.js'));
+const { scanLocalSS, scanTailscale, scanGateway, MANIFEST_PORT, MANIFEST_PATH } = require(path.join(repoRoot, 'scanner.js'));
 const http = require('http');
 const os   = require('os');
 const dns  = require('dns').promises;

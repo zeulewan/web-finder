@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "scripts": {
+    "check": "npm run check:js && npm run check:swift && npm run check:shell",
+    "check:js": "npm --prefix cli run check",
+    "check:swift": "swiftlint lint --quiet",
+    "check:shell": "bash -n install.sh uninstall.sh scripts/*.sh ios/*.sh"
+  }
+}

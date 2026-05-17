@@ -1,0 +1,35 @@
+included:
+  - ios/WebFinder
+  - macos/Sources
+
+excluded:
+  - ios/build
+  - macos/.build
+
+disabled_rules:
+  # Existing scanner files are intentionally dense and shared across app targets.
+  - cyclomatic_complexity
+  - file_length
+  - function_body_length
+  - type_body_length
+
+  # These are mostly formatting taste for this codebase; SwiftFormat can own them later.
+  - colon
+  - comma
+  - empty_enum_arguments
+  - for_where
+  - identifier_name
+  - line_length
+  - orphaned_doc_comment
+  - redundant_discardable_let
+  - statement_position
+  - trailing_comma
+
+opt_in_rules:
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+  - overridden_super_call
+  - prohibited_super_call
+  - redundant_nil_coalescing
+
+reporter: xcode

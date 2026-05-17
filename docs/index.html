@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Web Finder</title>
+  <title>WebFinder for Tailscale</title>
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
@@ -738,7 +738,7 @@
 
 <!-- NAV -->
 <nav>
-  <span class="logo">Web Finder</span>
+  <span class="logo">WebFinder for Tailscale</span>
   <span class="badge">v1.3.2</span>
   <a class="gh" href="https://github.com/zeulewan/web-finder" target="_blank">
     <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
@@ -750,8 +750,8 @@
 
 <!-- HERO -->
 <div class="hero">
-  <h1 class="fade-up">Find web interfaces<br>across your network</h1>
-  <p class="fade-up">Stop bookmarking admin pages, docs sites, and test builds across your tailnet. Web Finder discovers web services published by Web Finder clients on your devices, plus local services on the machine running it. Fully free and open source.</p>
+  <h1 class="fade-up">Find web interfaces<br>across your tailnet</h1>
+  <p class="fade-up">Stop bookmarking admin pages, docs sites, homelab dashboards, and test builds. WebFinder for Tailscale discovers web services published by WebFinder clients on your Tailscale devices, plus local services on the machine running it. Fully free and open source.</p>
 
   <div class="platforms fade-up">
     <div class="platform-tag">
@@ -770,7 +770,7 @@
       <div class="screenshot-wrap">
         <picture>
           <source srcset="mac-light.png" media="(prefers-color-scheme: light)">
-          <img src="mac-dark.png" alt="Web Finder menubar app showing local and Tailscale services">
+          <img src="mac-dark.png" alt="WebFinder menubar app showing local and Tailscale services">
         </picture>
       </div>
     </div>
@@ -782,7 +782,7 @@
           <div class="phone-screen">
             <picture>
               <source srcset="phone-light.png" media="(prefers-color-scheme: light)">
-              <img src="phone-dark.png" alt="Web Finder iOS showing discovered web interfaces">
+              <img src="phone-dark.png" alt="WebFinder iOS showing discovered web interfaces">
             </picture>
           </div>
           <img class="phone-frame-svg" src="iphone-frame.svg" alt="">
@@ -790,7 +790,7 @@
       </div>
       <details class="setup-dropdown">
         <summary>Setup guide</summary>
-        <p style="margin-top: 16px; font-size: 13px; color: var(--text-dim); max-width: 420px; margin-left: auto; margin-right: auto; line-height: 1.6;">Create a Tailscale OAuth client with <strong>Devices: Read</strong> scope, then paste the Client ID and Secret into the app. Install and start Web Finder on each Mac or Linux device you want to show up.</p>
+        <p style="margin-top: 16px; font-size: 13px; color: var(--text-dim); max-width: 420px; margin-left: auto; margin-right: auto; line-height: 1.6;">Create a Tailscale OAuth client with <strong>Devices: Read</strong> scope, then paste the Client ID and Secret into the app. Install and start WebFinder on each Mac or Linux device you want to show up.</p>
         <div class="phone-gallery" style="margin-top: 20px;">
           <div class="phone-frame-wrap">
             <div class="phone-label">Walkthrough</div>
@@ -809,7 +809,7 @@
               <div class="phone-screen">
                 <picture>
                   <source srcset="auth-light.png" media="(prefers-color-scheme: light)">
-                  <img src="auth-dark.png" alt="Web Finder iOS OAuth setup screen">
+                  <img src="auth-dark.png" alt="WebFinder iOS OAuth setup screen">
                 </picture>
               </div>
               <img class="phone-frame-svg" src="iphone-frame.svg" alt="">
@@ -865,7 +865,7 @@
       <ol class="steps">
         <li>Download from the App Store</li>
         <li>Create a Tailscale OAuth client with Devices: Read</li>
-        <li>Install and run Web Finder on Mac/Linux devices you want to discover</li>
+        <li>Install and run WebFinder on Mac/Linux devices you want to discover</li>
         <li>Paste Client ID and Secret into the app, then pull to refresh</li>
       </ol>
     </div>
@@ -912,7 +912,7 @@
     <div class="feature-card">
       <div class="feature-icon">&#x1F310;</div>
       <h4>Manifest-based discovery</h4>
-      <p>Remote devices show up when Web Finder is installed and running on them.</p>
+      <p>Remote devices show up when WebFinder is installed and running on them.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">&#x1F50D;</div>
@@ -976,37 +976,37 @@
 <!-- FAQ -->
 <div class="content-section fade-up" id="faq">
   <h2>FAQ</h2>
-  <p class="section-sub">Common questions about Web Finder.</p>
+  <p class="section-sub">Common questions about WebFinder for Tailscale.</p>
 
   <div class="faq-list">
     <details class="faq-item">
-      <summary>Is Web Finder free?</summary>
+      <summary>Is WebFinder for Tailscale free?</summary>
       <div class="faq-answer">Yes, completely. There are no in-app purchases, subscriptions, or ads. The app is open source under the MIT License and available on <a href="https://github.com/zeulewan/web-finder">GitHub</a>.</div>
     </details>
 
     <details class="faq-item">
       <summary>Do I need a paid Tailscale account?</summary>
-      <div class="faq-answer">No. Web Finder works with free personal Tailscale accounts. You just need to create an OAuth client with the <strong>Devices: Read</strong> scope, which is available to all Tailscale users.</div>
+      <div class="faq-answer">No. WebFinder for Tailscale works with free personal Tailscale accounts. You just need to create an OAuth client with the <strong>Devices: Read</strong> scope, which is available to all Tailscale users.</div>
     </details>
 
     <details class="faq-item">
       <summary>Does it work without Tailscale?</summary>
-      <div class="faq-answer">Yes, on macOS and Linux. Run <code>web-finder</code> on the CLI or use the macOS menubar app to discover web services running on that machine. Tailscale is needed for remote devices, and those remote devices need Web Finder running so they can publish their manifests.</div>
+      <div class="faq-answer">Yes, on macOS and Linux. Run <code>web-finder</code> on the CLI or use the macOS menubar app to discover web services running on that machine. Tailscale is needed for remote devices, and those remote devices need WebFinder running so they can publish their manifests.</div>
     </details>
 
     <details class="faq-item">
-      <summary>What ports does Web Finder scan?</summary>
-      <div class="faq-answer">On each Mac or Linux device, Web Finder scans its own listening web ports, fetches titles, and publishes the result as a manifest. Other clients fetch that manifest instead of port-scanning the peer. Debug mode shows extra diagnostics and peers with no published services.</div>
+      <summary>What ports does WebFinder scan?</summary>
+      <div class="faq-answer">On each Mac or Linux device, WebFinder scans its own listening web ports, fetches titles, and publishes the result as a manifest. Other clients fetch that manifest instead of port-scanning the peer. Debug mode shows extra diagnostics and peers with no published services.</div>
     </details>
 
     <details class="faq-item">
       <summary>Is my data sent to any servers?</summary>
-      <div class="faq-answer">No. OAuth credentials are stored locally on your device. The app connects to <code>api.tailscale.com</code> to fetch your device list, then connects directly to Web Finder manifest endpoints and service URLs on your own tailnet. There is no analytics, tracking, or telemetry.</div>
+      <div class="faq-answer">No. OAuth credentials are stored locally on your device. The app connects to <code>api.tailscale.com</code> to fetch your device list, then connects directly to WebFinder manifest endpoints and service URLs on your own tailnet. There is no analytics, tracking, or telemetry.</div>
     </details>
 
     <details class="faq-item">
       <summary>What is an OAuth client and how do I create one?</summary>
-      <div class="faq-answer">An OAuth client lets Web Finder read your Tailscale device list. Go to the <a href="https://login.tailscale.com/admin/settings/oauth" target="_blank">Tailscale admin console</a>, create a new OAuth client, select the <strong>Devices: Read</strong> scope, and copy the Client ID and Secret into the app. It takes about 30 seconds and only needs to be done once.</div>
+      <div class="faq-answer">An OAuth client lets WebFinder read your Tailscale device list. Go to the <a href="https://login.tailscale.com/admin/settings/oauth" target="_blank">Tailscale admin console</a>, create a new OAuth client, select the <strong>Devices: Read</strong> scope, and copy the Client ID and Secret into the app. It takes about 30 seconds and only needs to be done once.</div>
     </details>
 
     <details class="faq-item">

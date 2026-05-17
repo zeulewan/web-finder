@@ -321,7 +321,7 @@ async function scanLocal({ showAll = false } = {}) {
 
 // ---- gateway scan -----------------------------------------------------------
 
-async function scanGateway({ showAll = false } = {}) {
+async function scanGateway(_options = {}) {
   const routeOut = process.platform === 'darwin'
     ? await execPromise('route -n get default 2>/dev/null')
     : await execPromise('ip route show default 2>/dev/null');
@@ -516,7 +516,7 @@ async function getListeningPortsSS() {
   for (const line of out.split('\n')) {
     const m = line.match(/LISTEN\s+\d+\s+\d+\s+([\d.:[\]*]+):(\d+)\s/);
     if (!m) continue;
-    const addr = m[1].replace(/[\[\]]/g, '');
+    const addr = m[1].replace(/[[\]]/g, '');
     const port = parseInt(m[2]);
     if (!port) continue;
 

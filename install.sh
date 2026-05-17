@@ -15,7 +15,7 @@ warn()    { echo -e "${YELLOW}==> ${NC}$1"; }
 error()   { echo -e "${RED}Error: $1${NC}"; exit 1; }
 
 echo ""
-echo "  Web Finder - installer"
+echo "  WebFinder for Tailscale - installer"
 echo "  ======================"
 echo ""
 
@@ -52,7 +52,7 @@ if [ -d "$INSTALL_DIR/.git" ]; then
     info "Updating existing install..."
     git -C "$INSTALL_DIR" pull --ff-only
 else
-    info "Cloning Web Finder..."
+    info "Cloning WebFinder..."
     git clone "$REPO" "$INSTALL_DIR"
 fi
 
@@ -73,7 +73,7 @@ if [[ "$OS" == "mac" ]]; then
     APP_URL="https://github.com/zeulewan/web-finder/releases/latest/download/WebFinder.app.zip"
     APP_ZIP="$INSTALL_DIR/WebFinder.app.zip"
 
-    info "Downloading Web Finder.app..."
+    info "Downloading WebFinder.app..."
     if curl -fsSL -o "$APP_ZIP" "$APP_URL"; then
         # Remove old version if present
         rm -rf "/Applications/WebFinder.app"

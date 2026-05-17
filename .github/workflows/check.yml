@@ -1,0 +1,48 @@
+name: Check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+
+      - name: Install JS dependencies
+        run: npm ci --prefix cli
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Run checks
+        run: npm run check
+
+  macos-build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build macOS app
+        run: swift build
+        working-directory: macos
+
+  ios-build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build iOS app
+        run: >
+          xcodebuild
+          -project ios/WebFinder.xcodeproj
+          -scheme WebFinder
+          -destination 'generic/platform=iOS Simulator'
+          -sdk iphonesimulator
+          build
+          CODE_SIGNING_ALLOWED=NO

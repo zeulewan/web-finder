@@ -116,7 +116,7 @@ enum Scanner {
     // Per-scan URLSession — created fresh for each scan and invalidated when done.
     // This ensures connections from previous scans are properly cleaned up.
     private static var _scanSession: URLSession?
-    
+
     private static func makeScanSession() -> URLSession {
         // Invalidate previous session to close lingering connections
         _scanSession?.invalidateAndCancel()
@@ -128,7 +128,7 @@ enum Scanner {
         _scanSession = session
         return session
     }
-    
+
     /// Cancel any in-progress scan by invalidating the session.
     static func cancelScan() {
         _scanSession?.invalidateAndCancel()
@@ -561,7 +561,7 @@ enum Scanner {
             }
             let conn = NWConnection(
                 host: NWEndpoint.Host(host),
-                port: NWEndpoint.Port(rawValue: UInt16(port))!,
+                port: NWEndpoint.Port(rawValue: UInt16(port)) ?? .http,
                 using: .tcp
             )
             conn.stateUpdateHandler = { state in
@@ -680,14 +680,14 @@ enum Scanner {
             for port in ports {
                 group.addTask {
                     if let projectName = hints[port] {
-                        let url = URL(string: "http://\(host):\(port)")!
+                        guard let url = URL(string: "http://\(host):\(port)") else { return nil }
                         return WebService(title: projectName, port: port, url: url, isHTTPS: false)
                     }
                     if let svc = await fetchTitle(host: host, port: port) { return svc }
                     guard showAll else { return nil }
                     let name = lookup[port] ?? "Port \(port)"
                     let scheme = httpsFirstPorts.contains(port) ? "https" : "http"
-                    let url = URL(string: "\(scheme)://\(host):\(port)")!
+                    guard let url = URL(string: "\(scheme)://\(host):\(port)") else { return nil }
                     return WebService(title: name, port: port, url: url, isHTTPS: httpsFirstPorts.contains(port))
                 }
             }
@@ -864,25 +864,30 @@ enum Scanner {
 
 extension Scanner {
     static func demoDevices() -> [Device] {
-        [
+        func service(_ title: String, _ port: Int, _ urlString: String, _ isHTTPS: Bool) -> WebService? {
+            guard let url = URL(string: urlString) else { return nil }
+            return WebService(title: title, port: port, url: url, isHTTPS: isHTTPS)
+        }
+
+        return [
             Device(name: "workstation", ip: "100.101.214.44", isLocal: false, os: "linux", online: true, services: [
-                WebService(title: "Grafana", port: 3000, url: URL(string: "http://workstation:3000")!, isHTTPS: false),
-                WebService(title: "Prometheus", port: 9090, url: URL(string: "http://workstation:9090")!, isHTTPS: false),
-                WebService(title: "Jupyter Notebook", port: 8888, url: URL(string: "http://workstation:8888")!, isHTTPS: false),
-                WebService(title: "Portainer", port: 9443, url: URL(string: "https://workstation:9443")!, isHTTPS: true),
-            ]),
+                service("Grafana", 3000, "http://workstation:3000", false),
+                service("Prometheus", 9090, "http://workstation:9090", false),
+                service("Jupyter Notebook", 8888, "http://workstation:8888", false),
+                service("Portainer", 9443, "https://workstation:9443", true),
+            ].compactMap { $0 }),
             Device(name: "nas", ip: "100.88.12.5", isLocal: false, os: "linux", online: true, services: [
-                WebService(title: "Synology DSM", port: 5001, url: URL(string: "https://nas:5001")!, isHTTPS: true),
-                WebService(title: "Plex", port: 32400, url: URL(string: "http://nas:32400")!, isHTTPS: false),
-                WebService(title: "Jellyfin", port: 8096, url: URL(string: "http://nas:8096")!, isHTTPS: false),
-            ]),
+                service("Synology DSM", 5001, "https://nas:5001", true),
+                service("Plex", 32400, "http://nas:32400", false),
+                service("Jellyfin", 8096, "http://nas:8096", false),
+            ].compactMap { $0 }),
             Device(name: "pi-home", ip: "100.77.33.10", isLocal: false, os: "linux", online: true, services: [
-                WebService(title: "Home Assistant", port: 8123, url: URL(string: "http://pi-home:8123")!, isHTTPS: false),
-                WebService(title: "Node-RED", port: 1880, url: URL(string: "http://pi-home:1880")!, isHTTPS: false),
-            ]),
+                service("Home Assistant", 8123, "http://pi-home:8123", false),
+                service("Node-RED", 1880, "http://pi-home:1880", false),
+            ].compactMap { $0 }),
             Device(name: "macbook", ip: "100.117.222.41", isLocal: false, os: "darwin", online: true, services: [
-                WebService(title: "Dev Server", port: 5173, url: URL(string: "http://macbook:5173")!, isHTTPS: false),
-            ]),
+                service("Dev Server", 5173, "http://macbook:5173", false),
+            ].compactMap { $0 }),
             Device(name: "cloud-vm", ip: "100.64.1.22", isLocal: false, os: "linux", online: false, services: []),
         ]
     }

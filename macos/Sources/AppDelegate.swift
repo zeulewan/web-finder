@@ -2,15 +2,16 @@ import Cocoa
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var statusItem: NSStatusItem!
-    var popover: NSPopover!
-    var model: ScannerModel!
+    var statusItem: NSStatusItem?
+    var popover: NSPopover?
+    var model: ScannerModel?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        model = ScannerModel()
+        let scannerModel = ScannerModel()
+        model = scannerModel
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
-        if let button = statusItem.button {
+        if let button = statusItem?.button {
             let img = NSImage(systemSymbolName: "dot.radiowaves.left.and.right",
                               accessibilityDescription: "Web Finder")
             img?.isTemplate = true
@@ -20,19 +21,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 340, height: 460)
-        popover.contentViewController = NSHostingController(
-            rootView: ContentView().environmentObject(model)
+        popover?.contentSize = NSSize(width: 340, height: 460)
+        popover?.contentViewController = NSHostingController(
+            rootView: ContentView().environmentObject(scannerModel)
         )
-        popover.behavior = .transient
-        popover.animates = true
+        popover?.behavior = .transient
+        popover?.animates = true
 
         // Pre-scan immediately on launch so results are ready when the user clicks
-        model.scan()
+        scannerModel.scan()
     }
 
     @objc func togglePopover() {
-        guard let button = statusItem.button else { return }
+        guard let button = statusItem?.button, let popover else { return }
         if popover.isShown {
             popover.performClose(nil)
         } else {

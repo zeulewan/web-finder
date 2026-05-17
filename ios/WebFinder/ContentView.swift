@@ -74,7 +74,7 @@ class ScannerModel: ObservableObject {
     }
 
     private var scanTask: Task<Void, Never>?
-    
+
     func scan() {
         if demoMode { return }
         // Cancel any in-progress scan before starting a new one
@@ -264,7 +264,7 @@ struct SetupView: View {
     @State private var clientSecret = ""
     @State private var showSafari = false
 
-    static let oauthURL = URL(string: "https://login.tailscale.com/admin/settings/trust-credentials/add")!
+    static let oauthURL = URL(string: "https://login.tailscale.com/admin/settings/trust-credentials/add")
 
     var body: some View {
         VStack(spacing: 16) {
@@ -309,7 +309,9 @@ struct SetupView: View {
             .buttonStyle(.borderedProminent)
             .padding(.horizontal)
             .sheet(isPresented: $showSafari) {
-                SafariView(url: Self.oauthURL)
+                if let oauthURL = Self.oauthURL {
+                    SafariView(url: oauthURL)
+                }
             }
 
             VStack(spacing: 10) {
@@ -436,7 +438,9 @@ struct SettingsView: View {
                         showSafari = true
                     }
                     .sheet(isPresented: $showSafari) {
-                        SafariView(url: SetupView.oauthURL)
+                        if let oauthURL = SetupView.oauthURL {
+                            SafariView(url: oauthURL)
+                        }
                     }
                 } header: {
                     Text("Tailscale")
