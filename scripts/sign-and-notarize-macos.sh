@@ -115,7 +115,7 @@ fi
 echo "Stapling notarization ticket..."
 xcrun stapler staple "$app_path"
 xcrun stapler validate "$app_path"
-spctl -a -t exec -vv "$app_path"
+spctl -a -t open --context context:primary-signature -vv "$app_path"
 
 # Avoid AppleDouble files in the final archive. This is packaging hygiene, not
 # a Gatekeeper bypass; installers should not strip com.apple.quarantine.
