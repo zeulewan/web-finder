@@ -848,7 +848,7 @@
 <!-- INSTALL -->
 <div class="content-section fade-up" id="install">
   <h2>Install</h2>
-  <p class="section-sub">One command installs everything for your platform.</p>
+  <p class="section-sub">Install the app, then start the CLI publisher on devices you want to discover.</p>
 
   <div class="install-grid">
 
@@ -876,16 +876,36 @@
         <svg width="16" height="16" fill="var(--cyan)" viewBox="0 0 16 16">
           <path d="M3 5.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5zM3 8a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9A.5.5 0 0 1 3 8zm0 2.5a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1-.5-.5z"/>
         </svg>
-        macOS + Linux
+        macOS
       </h3>
-      <p class="card-sub">Menubar app + CLI on macOS, CLI on Linux</p>
+      <p class="card-sub">Signed and notarized menubar app via Homebrew</p>
+      <div class="code-block">
+        <code>brew install --cask zeulewan/tap/webfinder</code>
+        <button class="copy-btn" onclick="copy(this, 'brew install --cask zeulewan/tap/webfinder')">Copy</button>
+      </div>
+      <ol class="steps">
+        <li>Installs <code>WebFinder.app</code> to Applications</li>
+        <li>Works with Gatekeeper as a notarized Developer ID app</li>
+        <li>Use the CLI installer below on devices that should publish services</li>
+      </ol>
+    </div>
+
+    <!-- Publisher CLI -->
+    <div class="install-card">
+      <h3>
+        <svg width="16" height="16" fill="var(--cyan)" viewBox="0 0 16 16">
+          <path d="M3 5.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5zM3 8a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9A.5.5 0 0 1 3 8zm0 2.5a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1-.5-.5z"/>
+        </svg>
+        Publisher CLI
+      </h3>
+      <p class="card-sub">CLI on macOS and Linux for publishing this device over Tailscale</p>
       <div class="code-block">
         <code>curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash</code>
         <button class="copy-btn" onclick="copy(this, 'curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash')">Copy</button>
       </div>
       <ol class="steps">
         <li>Clones repo to <code>~/.web-finder</code></li>
-        <li>On macOS: downloads &amp; installs <code>WebFinder.app</code></li>
+        <li>On macOS: also installs <code>WebFinder.app</code></li>
         <li>On Linux: installs Node.js LTS if needed</li>
         <li>Adds <code>web-finder</code> CLI to PATH</li>
         <li>Run <code>web-finder start</code> to publish this device over Tailscale</li>
