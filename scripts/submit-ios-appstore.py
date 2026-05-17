@@ -20,9 +20,9 @@ from cryptography.hazmat.primitives.asymmetric import ec, utils
 
 BASE_URL = "https://api.appstoreconnect.apple.com"
 DEFAULT_WHATS_NEW = (
-    "Fixed remote discovery for services that start after Web Finder is already running. "
+    "Fixed remote discovery for services that start after WebFinder is already running. "
     "Devices now re-sync Tailscale Serve mappings during manifest refreshes, so newly "
-    "started services appear across your tailnet without restarting Web Finder.\n\n"
+    "started services appear across your tailnet without restarting WebFinder.\n\n"
     "Also fixes the build label shown in App Store release builds."
 )
 

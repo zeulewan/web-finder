@@ -40,4 +40,4 @@ fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
 perl -0pi -e "s/MARKETING_VERSION = [0-9]+\\.[0-9]+\\.[0-9]+;/MARKETING_VERSION = $version;/g; s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = $ios_build;/g" ios/WebFinder.xcodeproj/project.pbxproj
 perl -0pi -e "s/<span class=\"badge\">v[0-9]+\\.[0-9]+\\.[0-9]+<\\/span>/<span class=\"badge\">v$version<\\/span>/g" docs/index.html
 
-echo "Bumped Web Finder to $version (iOS build $ios_build)"
+echo "Bumped WebFinder to $version (iOS build $ios_build)"

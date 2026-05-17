@@ -34,6 +34,38 @@ This bumps versions, commits, tags, pushes, and creates the GitHub release. User
 web-finder update
 ```
 
+For polished macOS releases, sign and notarize the app before uploading it. You need a paid Apple Developer Program account and a `Developer ID Application` certificate installed in Keychain. The signing script auto-detects the certificate when exactly one is installed, or you can set `DEVELOPER_ID_APPLICATION` explicitly.
+
+The release script signs and notarizes when one notarization credential path is available:
+
+```bash
+export DEVELOPER_ID_APPLICATION="Developer ID Application: Your Name (TEAMID)"
+export APP_STORE_CONNECT_KEY_PATH=/path/to/AuthKey_KEYID.p8
+export APP_STORE_CONNECT_KEY_ID=KEYID
+export APP_STORE_CONNECT_ISSUER_ID=ISSUER_UUID
+scripts/release.sh X.Y.Z [IOS_BUILD]
+```
+
+`APP_STORE_CONNECT_KEY_ID` is inferred from `AuthKey_KEYID.p8` when possible. `APP_STORE_CONNECT_ISSUER_ID` is required for Team API keys; omit it for Individual API keys. Check the local setup with:
+
+```bash
+scripts/doctor-macos-release.sh
+```
+
+Alternatively, use a local notarytool keychain profile:
+
+```bash
+xcrun notarytool store-credentials webfinder-notary \
+  --apple-id APPLE_ID \
+  --team-id TEAM_ID \
+  --password APP_SPECIFIC_PASSWORD
+export NOTARYTOOL_PROFILE=webfinder-notary
+```
+
+The macOS signing flow follows the same shape as other polished direct-distributed menu bar apps: package the app bundle, sign it with hardened runtime and timestamp, submit the zip to Apple notarization, staple the ticket, validate with `spctl`, clear archive-problematic extended attributes, and create the final zip with `ditto --norsrc`.
+
+Do not strip `com.apple.quarantine` in installers. The distributed macOS app should be Developer ID signed, notarized, and stapled so Gatekeeper can validate it normally.
+
 ## iOS App Store Upload
 
 `ios/build-ios.sh` creates an unsigned IPA for local/manual use. It is not the App Store upload path.
@@ -121,4 +153,4 @@ web-finder
 curl -k https://PEER_DNS:9321/.well-known/web-finder.json
 ```
 
-Test from at least two devices. Compare CLI, macOS app, and iOS output. Remote devices should fetch Web Finder manifests from peers, not port-scan peers. A peer only appears with services after Web Finder is installed and `web-finder start` has run on that peer.
+Test from at least two devices. Compare CLI, macOS app, and iOS output. Remote devices should fetch WebFinder manifests from peers, not port-scan peers. A peer only appears with services after WebFinder is installed and `web-finder start` has run on that peer.

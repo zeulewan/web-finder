@@ -79,8 +79,6 @@ if [[ "$OS" == "mac" ]]; then
         rm -rf "/Applications/WebFinder.app"
         sudo unzip -q "$APP_ZIP" -d "/Applications/"
         rm -f "$APP_ZIP"
-        # Remove quarantine flag so macOS doesn't block unsigned binary
-        sudo xattr -dr com.apple.quarantine "/Applications/WebFinder.app" 2>/dev/null || true
         info "App installed to /Applications/WebFinder.app"
         info "Open it from Finder or run: open /Applications/WebFinder.app"
     else

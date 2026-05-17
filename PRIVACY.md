@@ -1,12 +1,12 @@
 # Privacy Policy
 
-**Web Finder** does not collect, store, or transmit any personal data.
+**WebFinder for Tailscale** does not collect, store, or transmit any personal data.
 
 ## What the app does
 
 - Connects to the Tailscale API using OAuth credentials you provide to discover devices on your tailnet
-- Fetches Web Finder manifests from devices where Web Finder is installed and running
-- Scans local services only on the device running Web Finder
+- Fetches WebFinder manifests from devices where WebFinder is installed and running
+- Scans local services only on the device running WebFinder
 - Opens URLs in your default browser when you tap a service
 
 ## Data storage
@@ -18,9 +18,9 @@
 ## Network access
 
 - The app connects to `api.tailscale.com` to authenticate with Tailscale and retrieve your device list
-- The app connects directly to Web Finder manifest endpoints on your Tailscale devices, normally on port `9321`
+- The app connects directly to WebFinder manifest endpoints on your Tailscale devices, normally on port `9321`
 - The app connects to service URLs on your tailnet or local network when you open them
-- The iOS app does not port-scan Tailscale peers; peer services are published by Web Finder running on those peers
+- The iOS app does not port-scan Tailscale peers; peer services are published by WebFinder running on those peers
 
 ## Third-party services
 

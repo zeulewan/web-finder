@@ -9,7 +9,7 @@ info()  { echo -e "${GREEN}==> ${NC}$1"; }
 error() { echo -e "${RED}Error: $1${NC}"; exit 1; }
 
 echo ""
-echo "  Web Finder - uninstaller"
+echo "  WebFinder for Tailscale - uninstaller"
 echo "  ========================"
 echo ""
 
@@ -43,5 +43,5 @@ fi
 pkill -f WebFinder 2>/dev/null && info "Stopped running WebFinder process" || true
 
 echo ""
-echo -e "${GREEN}Done!${NC} Web Finder has been uninstalled."
+echo -e "${GREEN}Done!${NC} WebFinder has been uninstalled."
 echo ""

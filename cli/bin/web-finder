@@ -436,7 +436,6 @@ if (command === 'update' || args.includes('--update') || args.includes('-u')) {
         for (const installDir of installDirs) {
           fs.mkdirSync(installDir, { recursive: true });
           execSync(`rm -rf "${path.join(installDir, 'WebFinder.app')}" && cp -R "${builtApp}" "${installDir}/"`, { stdio: 'inherit' });
-          execSync(`xattr -dr com.apple.quarantine "${path.join(installDir, 'WebFinder.app')}" 2>/dev/null || true`, { encoding: 'utf8' });
           console.log(`WebFinder.app installed in ${installDir}.`);
         }
         console.log('Restart the app to use the updated build.');
@@ -456,7 +455,6 @@ if (command === 'update' || args.includes('--update') || args.includes('-u')) {
         execSync(`curl -fsSL -o "${tmpZip}" "${appUrl}"`, { encoding: 'utf8' });
         fs.mkdirSync(destDir, { recursive: true });
         execSync(`rm -rf "${path.join(destDir, 'WebFinder.app')}" && unzip -q "${tmpZip}" -d "${destDir}"`, { stdio: 'inherit' });
-        execSync(`xattr -dr com.apple.quarantine "${path.join(destDir, 'WebFinder.app')}" 2>/dev/null || true`, { encoding: 'utf8' });
         fs.unlinkSync(tmpZip);
         console.log(`WebFinder.app updated in ${destDir}.`);
         }
@@ -594,7 +592,7 @@ if (args.includes('--help') || args.includes('-h')) {
 Usage: web-finder [command] [options]
 
 Commands:
-  web-finder              Find web services on this machine, router, and tailnet
+  web-finder              Find local services and Tailscale-published peer services
   web-finder start        Start sharing this machine over Tailscale Serve at boot
   web-finder stop         Stop sharing this machine and disable boot autostart
   web-finder status       Check daemon, Tailscale Serve, MagicDNS, and version
