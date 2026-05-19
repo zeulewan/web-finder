@@ -7,6 +7,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 MANIFEST_PORT=9321
 CRON_MARKER="# web-finder-serve"
+AUTO_PUBLISH_STATE="$HOME/.web-finder-auto-published-ports"
 
 info()  { echo -e "${GREEN}==> ${NC}$1"; }
 warn()  { echo -e "${YELLOW}==> ${NC}$1"; }
@@ -72,6 +73,16 @@ stop_pidfile_process() {
 
 disable_tailscale_manifest_serve() {
     command -v tailscale &>/dev/null || return 0
+
+    if [ -f "$AUTO_PUBLISH_STATE" ]; then
+        while IFS= read -r port; do
+            if [[ "$port" =~ ^[0-9]+$ ]]; then
+                tailscale serve --https="$port" off 2>/dev/null || true
+                tailscale serve --http="$port" off 2>/dev/null || true
+            fi
+        done < "$AUTO_PUBLISH_STATE"
+        rm -f "$AUTO_PUBLISH_STATE"
+    fi
 
     tailscale serve --https="$MANIFEST_PORT" off 2>/dev/null || true
     tailscale serve --http="$MANIFEST_PORT" off 2>/dev/null || true

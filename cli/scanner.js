@@ -544,26 +544,15 @@ async function getListeningPortsSS() {
 /**
  * Scan the local machine using `ss` to discover all listening ports dynamically.
  * Linux-only. Falls back to scanLocal on macOS.
+ * In tailnetOnly mode, only returns services already mapped by Tailscale Serve.
  * Returns: [{ title, host, port, url }]
  */
 async function scanLocalSS({ showAll = false, tailnetOnly = false } = {}) {
+  if (tailnetOnly) return scanTailscaleServedLocal({ showAll });
+
   if (process.platform !== 'linux') {
     const services = await scanLocal({ showAll });
-    if (!tailnetOnly) return services;
-
-    const tsServeMap = await getTailscaleServeMap();
-    return services.flatMap(service => {
-      const extPort = tsServeMap.get(service.port);
-      if (!extPort) return [];
-      try {
-        const u = new URL(service.url);
-        u.protocol = 'https:';
-        u.port = extPort;
-        return [{ ...service, port: extPort, url: u.toString() }];
-      } catch {
-        return [];
-      }
-    });
+    return services;
   }
 
   const [listeningPorts, tsServeMap, zensicalHints] = await Promise.all([
@@ -665,7 +654,7 @@ async function getZensicalHints() {
 
 /**
  * Parse `tailscale serve status` to find ports with HTTPS proxies.
- * Returns a Map of localPort -> { externalPort, https: true }.
+ * Returns a Map of localPort -> externalPort.
  * Tailscale serve terminates TLS on the Tailscale interface, so remote
  * clients must use https:// with the DNS name for these ports.
  */
@@ -691,6 +680,42 @@ async function getTailscaleServeMap() {
     }
   }
   return map;
+}
+
+async function scanTailscaleServedLocal({ showAll = false } = {}) {
+  const tsServeMap = await getTailscaleServeMap();
+  const services = await Promise.all(Array.from(tsServeMap.entries()).map(async ([localPort, externalPort]) => {
+    if (localPort === MANIFEST_PORT) return null;
+
+    const isDarwin = process.platform === 'darwin';
+    const svc = await fetchService('127.0.0.1', localPort, { isDarwin, showAll });
+    if (!svc) return null;
+
+    let url = svc.url;
+    try {
+      const u = new URL(url);
+      u.protocol = 'https:';
+      u.hostname = '127.0.0.1';
+      u.port = externalPort;
+      url = u.toString();
+    } catch {
+      url = `https://127.0.0.1:${externalPort}`;
+    }
+
+    return { title: svc.title, host: '127.0.0.1', port: externalPort, localPort, url };
+  }));
+
+  let result = dedup(services.filter(Boolean));
+  if (!showAll) {
+    const isDarwin = process.platform === 'darwin';
+    result = result.filter(s => {
+      if (NON_WEB_PORTS.has(s.localPort) || NON_WEB_PORTS.has(s.port)) return false;
+      if (isDarwin && (DARWIN_NON_WEB_PORTS.has(s.localPort) || DARWIN_NON_WEB_PORTS.has(s.port))) return false;
+      if (s.title === `Port ${s.localPort}` || s.title === `Port ${s.port}`) return false;
+      return true;
+    });
+  }
+  return result;
 }
 
 /**
@@ -763,6 +788,6 @@ function fetchManifest(host, fallbackHost = null) {
 module.exports = {
   scanLocal, scanLocalSS, scanTailscale, scanGateway,
   scanPorts, scanPortsBatched, checkPort,
-  getListeningPortsSS, fetchManifest,
+  getListeningPortsSS, getTailscaleServeMap, fetchManifest,
   SCAN_PORTS, MANIFEST_PORT, MANIFEST_PATH,
 };

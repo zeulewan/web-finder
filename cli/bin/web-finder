@@ -4,7 +4,9 @@
  *
  * Usage:
  *   web-finder                 # Scan local + Tailscale, human-readable
- *   web-finder start           # Start sharing and enable autostart
+ *   web-finder start           # Start manifest publisher and enable autostart
+ *   web-finder start --auto-publish
+ *                               # Also publish detected local web UIs
  *   web-finder stop            # Stop sharing and disable autostart
  *   web-finder status          # Check daemon, Tailscale Serve, DNS, version
  *   web-finder --json          # Machine-readable JSON output
@@ -17,10 +19,12 @@ const { execSync } = require('child_process');
 // Resolve symlinks so scanner.js is found even when binary is symlinked to /usr/local/bin
 const realBin  = fs.realpathSync(__filename);
 const repoRoot = path.join(path.dirname(realBin), '..');
-const { scanLocalSS, scanTailscale, scanGateway, MANIFEST_PORT, MANIFEST_PATH } = require(path.join(repoRoot, 'scanner.js'));
+const { scanLocalSS, scanTailscale, scanGateway, getTailscaleServeMap, MANIFEST_PORT, MANIFEST_PATH } = require(path.join(repoRoot, 'scanner.js'));
 const http = require('http');
 const os   = require('os');
 const dns  = require('dns').promises;
+
+const AUTO_PUBLISH_STATE = path.join(os.homedir(), '.web-finder-auto-published-ports');
 
 const pkg  = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
 const TAILSCALE_PATHS = [
@@ -53,6 +57,26 @@ function execTailscale(args, options = {}) {
   const cmd = tailscaleCommand();
   if (!cmd) throw new Error('tailscale command not found');
   return execSync(`${quoteShell(cmd)} ${args}`, { encoding: 'utf8', ...options });
+}
+
+function readAutoPublishedPorts() {
+  try {
+    return fs.readFileSync(AUTO_PUBLISH_STATE, 'utf8')
+      .split('\n')
+      .map(line => parseInt(line.trim()))
+      .filter(port => Number.isInteger(port) && port > 0);
+  } catch {
+    return [];
+  }
+}
+
+function writeAutoPublishedPorts(ports) {
+  const unique = Array.from(new Set(ports)).sort((a, b) => a - b);
+  if (unique.length === 0) {
+    try { fs.unlinkSync(AUTO_PUBLISH_STATE); } catch {}
+    return;
+  }
+  fs.writeFileSync(AUTO_PUBLISH_STATE, `${unique.join('\n')}\n`);
 }
 
 function hasCommand(cmd) {
@@ -293,10 +317,13 @@ function setupTailscaleServe() {
 }
 
 async function syncTailscaleServeServices({ showAll = false } = {}) {
+  const existingServeMap = await getTailscaleServeMap();
   const services = await scanLocalSS({ showAll });
   let count = 0;
+  const autoPublishedPorts = readAutoPublishedPorts();
   for (const service of services) {
     if (!service.port || service.port === MANIFEST_PORT) continue;
+    if (existingServeMap.has(service.port)) continue;
     let target;
     try {
       const url = new URL(service.url);
@@ -307,16 +334,25 @@ async function syncTailscaleServeServices({ showAll = false } = {}) {
     }
     try {
       execTailscale(`serve --bg --https=${service.port} ${quoteShell(target)}`);
+      autoPublishedPorts.push(service.port);
       count += 1;
     } catch (e) {
       console.error(`Tailscale Serve setup skipped for ${service.title || `:${service.port}`}: ${e.message}`);
     }
   }
+  writeAutoPublishedPorts(autoPublishedPorts);
   if (count > 0) console.log(`Tailscale Serve enabled for ${count} local service(s).`);
   return count;
 }
 
-function removeTailscaleServe() {
+function removeTailscaleServe({ removeAutoPublished = false } = {}) {
+  if (removeAutoPublished) {
+    for (const port of readAutoPublishedPorts()) {
+      try { execTailscale(`serve --https=${port} off`); } catch {}
+      try { execTailscale(`serve --http=${port} off`); } catch {}
+    }
+    writeAutoPublishedPorts([]);
+  }
   try {
     execTailscale(`serve --https=${MANIFEST_PORT} off`);
   } catch {}
@@ -326,8 +362,11 @@ function removeTailscaleServe() {
   } catch {}
 }
 
-function setupAutostart() {
+function setupAutostart({ autoPublish = false } = {}) {
   const info = getAutostartInfo();
+  const serveArgs = autoPublish
+    ? ['serve', '--host', '127.0.0.1', '--auto-publish']
+    : ['serve', '--host', '127.0.0.1'];
   try {
     if (info.type === 'launchd') {
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -339,9 +378,7 @@ function setupAutostart() {
     <array>
         <string>${info.nodePath}</string>
         <string>${info.binPath}</string>
-        <string>serve</string>
-        <string>--host</string>
-        <string>127.0.0.1</string>
+        ${serveArgs.map(arg => `<string>${arg}</string>`).join('\n        ')}
     </array>
     <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><true/>
@@ -357,7 +394,7 @@ function setupAutostart() {
     } else if (info.type === 'cron') {
       const marker = '# web-finder-serve';
       if (hasCommand('crontab')) {
-        const cronLine = `@reboot ${quoteShell(info.nodePath)} ${quoteShell(info.binPath)} serve --host 127.0.0.1 >> /tmp/web-finder-serve.log 2>&1 ${marker}`;
+        const cronLine = `@reboot ${quoteShell(info.nodePath)} ${quoteShell(info.binPath)} ${serveArgs.map(quoteShell).join(' ')} >> /tmp/web-finder-serve.log 2>&1 ${marker}`;
         let existing = '';
         try { existing = execSync('crontab -l 2>/dev/null', { encoding: 'utf8' }); } catch {}
         const next = existing
@@ -379,7 +416,7 @@ function setupAutostart() {
           try { execSync(`kill ${pid}`, { encoding: 'utf8' }); } catch {}
         }
       }
-      const startCmd = `nohup ${quoteShell(info.nodePath)} ${quoteShell(info.binPath)} serve --host 127.0.0.1 >> /tmp/web-finder-serve.log 2>&1 & echo $! > ${quoteShell(info.pidfile)}`;
+      const startCmd = `nohup ${quoteShell(info.nodePath)} ${quoteShell(info.binPath)} ${serveArgs.map(quoteShell).join(' ')} >> /tmp/web-finder-serve.log 2>&1 & echo $! > ${quoteShell(info.pidfile)}`;
       execSync(startCmd, { encoding: 'utf8' });
       console.log('Manifest server started.');
     } else {
@@ -387,7 +424,7 @@ function setupAutostart() {
 Description=web-finder manifest server
 
 [Service]
-ExecStart=${info.nodePath} ${info.binPath} serve --host 127.0.0.1
+ExecStart=${info.nodePath} ${info.binPath} ${serveArgs.join(' ')}
 Restart=on-failure
 RestartSec=5
 
@@ -446,7 +483,7 @@ function removeAutostart() {
       try { execSync('systemctl --user daemon-reload', { encoding: 'utf8' }); } catch {}
       console.log('Autostart disabled.');
     }
-    removeTailscaleServe();
+    removeTailscaleServe({ removeAutoPublished: true });
   } catch (e) {
     console.error('Failed to disable autostart:', e.message);
   }
@@ -454,6 +491,7 @@ function removeAutostart() {
 
 const args = process.argv.slice(2);
 const command = args.find(a => !a.startsWith('-')) || '';
+const autoPublishMode = args.includes('--auto-publish');
 
 if (command === 'version' || args.includes('--version') || args.includes('-v')) {
   console.log(versionString());
@@ -526,13 +564,13 @@ if (command === 'update' || args.includes('--update') || args.includes('-u')) {
   }
 
   // Set up autostart as part of every update
-  setupAutostart();
+  setupAutostart({ autoPublish: autoPublishMode });
 
   process.exit(0);
 }
 
 if (command === 'start') {
-  setupAutostart();
+  setupAutostart({ autoPublish: autoPublishMode });
   process.exit(0);
 }
 
@@ -554,7 +592,7 @@ if (command === 'status' || command === 'diagnose') {
 if (args[0] === 'autostart') {
   const sub = args[1];
   if (sub === 'on' || sub === 'enable') {
-    setupAutostart();
+    setupAutostart({ autoPublish: autoPublishMode });
   } else if (sub === 'off' || sub === 'disable') {
     removeAutostart();
   } else {
@@ -567,6 +605,7 @@ if (args[0] === 'serve') {
   const portIdx  = args.indexOf('--port');
   const hostIdx  = args.indexOf('--host');
   const noTsServe = args.includes('--no-tailscale-serve');
+  const autoPublish = args.includes('--auto-publish');
   const servePort = portIdx !== -1 ? parseInt(args[portIdx + 1]) : MANIFEST_PORT;
   const serveHost = hostIdx !== -1 ? args[hostIdx + 1] : (process.env.WEB_FINDER_HOST || '127.0.0.1');
   const showAll  = args.includes('--debug') || args.includes('--all') || args.includes('-a');
@@ -577,7 +616,7 @@ if (args[0] === 'serve') {
   let manifestRefresh = null;
 
   async function buildManifest() {
-    if (serveHost === '127.0.0.1' && servePort === MANIFEST_PORT && !noTsServe) {
+    if (autoPublish && serveHost === '127.0.0.1' && !noTsServe) {
       await syncTailscaleServeServices({ showAll });
     }
     const services = await scanLocalSS({ showAll, tailnetOnly: true });
@@ -654,7 +693,9 @@ Usage: web-finder [command] [options]
 
 Commands:
   web-finder              Find local services and Tailscale-published peer services
-  web-finder start        Start sharing this machine over Tailscale Serve and enable autostart
+  web-finder start        Start the manifest daemon and enable autostart
+  web-finder start --auto-publish
+                          Also publish detected local web UIs with Tailscale Serve
   web-finder stop         Stop sharing this machine and disable autostart
   web-finder status       Check daemon, Tailscale Serve, MagicDNS, and version
   web-finder update       Update WebFinder and restart sharing
@@ -663,15 +704,19 @@ Commands:
 Options:
   --json, -j          Output as JSON for apps/scripts
   --debug             Show noisy diagnostics, all open ports, and no-service peers
+  --auto-publish      With start/serve, publish detected local web UIs via Tailscale Serve
   --version, -v       Show version
   --help, -h          Show this help
 
 By default, web-finder only shows machines that are actually serving something.
+The publisher only advertises services already exposed with Tailscale Serve unless
+you start it with --auto-publish.
 Use --debug when you need the full/noisy view.
 
 Examples:
   web-finder
   web-finder start
+  web-finder start --auto-publish
   web-finder status
   web-finder --debug
   web-finder --json

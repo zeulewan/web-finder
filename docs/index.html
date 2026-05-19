@@ -752,7 +752,7 @@
 <!-- HERO -->
 <div class="hero">
   <h1 class="fade-up">Find web interfaces<br>across your tailnet</h1>
-  <p class="fade-up">Discover dashboards, docs, admin pages, and test builds across your tailnet. Install WebFinder on each Mac or Linux peer you want to publish.</p>
+  <p class="fade-up">Discover dashboards, docs, admin pages, and test builds already exposed with Tailscale Serve. Install WebFinder on each Mac/Linux peer you want listed.</p>
 
   <div class="platforms fade-up">
     <div class="platform-tag">
@@ -849,7 +849,7 @@
 <!-- INSTALL -->
 <div class="content-section fade-up" id="install">
   <h2>Install</h2>
-  <p class="section-sub">Install the app, then start the CLI publisher on devices you want to discover.</p>
+  <p class="section-sub">Install the app, then start the CLI manifest publisher on devices you want to discover.</p>
 
   <div class="install-grid">
 
@@ -888,7 +888,7 @@
         <li>Installs <code>WebFinder.app</code> to Applications</li>
         <li>Installs the <code>web-finder</code> CLI publisher</li>
         <li>Works with Gatekeeper as a notarized Developer ID app</li>
-        <li>Run <code>web-finder start</code> to publish this Mac over Tailscale</li>
+        <li>Run <code>web-finder start</code> to advertise this Mac's Tailscale-served web UIs</li>
       </ol>
     </div>
 
@@ -909,7 +909,7 @@
         <li>Clones repo to <code>~/.web-finder</code></li>
         <li>Requires Node.js LTS; apt-based distros install it automatically</li>
         <li>Adds <code>web-finder</code> CLI to PATH</li>
-        <li>Run <code>web-finder start</code> to publish this device over Tailscale</li>
+        <li>Run <code>web-finder start</code> to advertise this device's Tailscale-served web UIs</li>
       </ol>
     </div>
 
@@ -927,7 +927,7 @@
 <!-- FEATURES -->
 <div class="content-section fade-up" id="features">
   <h2>How discovery works</h2>
-  <p class="section-sub">Local devices detect their own web interfaces, then publish a small manifest to your tailnet.</p>
+  <p class="section-sub">Local devices publish a small manifest of web UIs already exposed with Tailscale Serve.</p>
 
   <div class="features-grid">
     <div class="feature-card">
@@ -938,12 +938,12 @@
     <div class="feature-card">
       <div class="feature-icon">&#x1F50D;</div>
       <h4>Local smart detection</h4>
-      <p>Each client scans its own listening web ports, fetches page titles, and deduplicates HTTP/HTTPS pairs.</p>
+      <p>Each publisher fetches titles from local ports already mapped by Tailscale Serve. Auto-publish mode can scan detected listening web ports.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">&#x1F512;</div>
       <h4>Tailnet-safe sharing</h4>
-      <p><code>web-finder start</code> runs the background publisher, enables autostart, and exposes service links through Tailscale Serve.</p>
+      <p><code>web-finder start</code> runs the background publisher, enables autostart, and advertises services already exposed with Tailscale Serve. Add <code>--auto-publish</code> to let WebFinder create Tailscale Serve mappings for detected local web UIs.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">&#x1F4CB;</div>
@@ -965,7 +965,11 @@
     </div>
     <div class="cli-row">
       <span class="cmd-text">web-finder start</span>
-      <span class="desc">Start sharing this device over Tailscale and enable autostart where available</span>
+      <span class="desc">Start the manifest publisher and enable autostart where available</span>
+    </div>
+    <div class="cli-row">
+      <span class="cmd-text">web-finder start --auto-publish</span>
+      <span class="desc">Also publish detected local web UIs with Tailscale Serve</span>
     </div>
     <div class="cli-row">
       <span class="cmd-text">web-finder stop</span>
@@ -1017,12 +1021,12 @@
 
     <details class="faq-item">
       <summary>What ports does WebFinder scan?</summary>
-      <div class="faq-answer">On each Mac or Linux device, WebFinder scans its own listening web ports, fetches titles, and publishes the result as a manifest. Other clients fetch that manifest instead of port-scanning the peer. Debug mode shows extra diagnostics and peers with no published services.</div>
+      <div class="faq-answer">For remote peer discovery, WebFinder reads existing Tailscale Serve mappings, fetches titles from the matching local web ports, and publishes those results as a manifest. The standalone CLI and macOS app can also scan local ports on the machine where they are running. Other clients fetch peer manifests instead of port-scanning the peer.</div>
     </details>
 
     <details class="faq-item">
       <summary>Is there a daemon or autostart?</summary>
-      <div class="faq-answer">Yes. Run <code>web-finder start</code> once on each Mac or Linux device you want to publish. It starts the local manifest daemon, enables autostart where supported, and configures Tailscale Serve. macOS uses a LaunchAgent, most Linux systems use a systemd user service, and Synology/non-systemd systems fall back to cron when available.</div>
+      <div class="faq-answer">Yes. Run <code>web-finder start</code> once on each Mac or Linux device you want to advertise. It starts the local manifest daemon, enables autostart where supported, and exposes only the manifest through Tailscale Serve by default. Use <code>web-finder start --auto-publish</code> if you want WebFinder to create Tailscale Serve mappings for detected local web UIs. macOS uses a LaunchAgent, most Linux systems use a systemd user service, and Synology/non-systemd systems fall back to cron when available.</div>
     </details>
 
     <details class="faq-item">
