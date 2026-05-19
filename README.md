@@ -2,7 +2,9 @@
 
 **Find web interfaces across your tailnet.**
 
-Stop bookmarking admin pages, docs sites, homelab dashboards, and test builds. WebFinder for Tailscale discovers web services published by WebFinder clients on your Tailscale devices, plus local services on the machine running it. Fully free and open source.
+Install WebFinder on each Mac or Linux device whose web UIs you want to see, then run `web-finder start` once to launch the background manifest daemon and enable autostart. WebFinder for Tailscale discovers those published services across your tailnet, plus local services on the machine running it.
+
+Stop bookmarking admin pages, docs sites, homelab dashboards, and test builds. Fully free and open source.
 
 **[zeulewan.github.io/web-finder](https://zeulewan.github.io/web-finder/)**
 
@@ -58,7 +60,7 @@ curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/uninstall.s
 
 ```bash
 web-finder                   # Find local services and Tailscale-published peer services
-web-finder start             # Start sharing this machine over Tailscale Serve and enable autostart
+web-finder start             # Start the background manifest daemon and enable autostart
 web-finder stop              # Stop sharing and disable autostart
 web-finder status            # Check daemon, Tailscale Serve, MagicDNS, and version
 web-finder update            # Update WebFinder and restart sharing
@@ -78,6 +80,8 @@ WebFinder for Tailscale is intentionally Tailscale-first:
 - Normal output hides protocol/API-only ports and peers with no services. Use `web-finder --debug` for the noisy view.
 
 Remote services only appear after WebFinder is installed and started on the peer.
+
+`web-finder start` installs an autostart entry where supported: a LaunchAgent on macOS, a systemd user service on most Linux systems, or a cron fallback on Synology/non-systemd systems.
 
 ## Development
 

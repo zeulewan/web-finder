@@ -751,7 +751,7 @@
 <!-- HERO -->
 <div class="hero">
   <h1 class="fade-up">Find web interfaces<br>across your tailnet</h1>
-  <p class="fade-up">Stop bookmarking admin pages, docs sites, homelab dashboards, and test builds. WebFinder for Tailscale discovers web services published by WebFinder clients on your Tailscale devices, plus local services on the machine running it. Fully free and open source.</p>
+  <p class="fade-up">Install WebFinder on each Mac or Linux device whose web UIs you want to see, then run <code>web-finder start</code> once to launch the background manifest daemon and enable autostart. Stop bookmarking admin pages, docs sites, homelab dashboards, and test builds. Fully free and open source.</p>
 
   <div class="platforms fade-up">
     <div class="platform-tag">
@@ -932,7 +932,7 @@
     <div class="feature-card">
       <div class="feature-icon">&#x1F310;</div>
       <h4>Manifest-based discovery</h4>
-      <p>Remote devices show up when WebFinder is installed and running on them.</p>
+      <p>Remote devices show up after WebFinder is installed and started on each Mac or Linux peer you want to discover.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">&#x1F50D;</div>
@@ -942,7 +942,7 @@
     <div class="feature-card">
       <div class="feature-icon">&#x1F512;</div>
       <h4>Tailnet-safe sharing</h4>
-      <p><code>web-finder start</code> publishes service links with Tailscale Serve and exposes a manifest on port 9321.</p>
+      <p><code>web-finder start</code> runs the background publisher, enables autostart, and exposes service links through Tailscale Serve.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">&#x1F4CB;</div>
@@ -1017,6 +1017,11 @@
     <details class="faq-item">
       <summary>What ports does WebFinder scan?</summary>
       <div class="faq-answer">On each Mac or Linux device, WebFinder scans its own listening web ports, fetches titles, and publishes the result as a manifest. Other clients fetch that manifest instead of port-scanning the peer. Debug mode shows extra diagnostics and peers with no published services.</div>
+    </details>
+
+    <details class="faq-item">
+      <summary>Is there a daemon or autostart?</summary>
+      <div class="faq-answer">Yes. Run <code>web-finder start</code> once on each Mac or Linux device you want to publish. It starts the local manifest daemon, enables autostart where supported, and configures Tailscale Serve. macOS uses a LaunchAgent, most Linux systems use a systemd user service, and Synology/non-systemd systems fall back to cron when available.</div>
     </details>
 
     <details class="faq-item">
