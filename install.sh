@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 REPO="https://github.com/zeulewan/web-finder"
 INSTALL_DIR="$HOME/.web-finder"
@@ -16,7 +16,7 @@ error()   { echo -e "${RED}Error: $1${NC}"; exit 1; }
 
 echo ""
 echo "  WebFinder for Tailscale - installer"
-echo "  ======================"
+echo "  ==================================="
 echo ""
 
 # Detect OS
@@ -35,13 +35,13 @@ if [[ "$OS" == "mac" ]]; then
 
     info "Installing WebFinder.app and CLI with Homebrew..."
     if brew list --formula zeulewan/tap/web-finder &>/dev/null || brew list --formula web-finder &>/dev/null; then
-        brew upgrade zeulewan/tap/web-finder || true
+        brew upgrade zeulewan/tap/web-finder
     else
         brew install zeulewan/tap/web-finder
     fi
 
     if brew list --cask zeulewan/tap/webfinder &>/dev/null || brew list --cask webfinder &>/dev/null; then
-        brew upgrade --cask zeulewan/tap/webfinder || true
+        brew upgrade --cask zeulewan/tap/webfinder
     else
         brew install --cask zeulewan/tap/webfinder
     fi
@@ -76,6 +76,7 @@ command -v git &>/dev/null || error "git is required. Install it and re-run."
 
 # Check for Node.js
 if ! command -v node &>/dev/null; then
+    command -v apt-get &>/dev/null || error "Node.js is required. Install Node.js LTS for your distro and re-run."
     warn "Node.js not found. Installing via NodeSource..."
     curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
     sudo apt-get install -y nodejs

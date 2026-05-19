@@ -8,7 +8,7 @@ Stop bookmarking admin pages, docs sites, homelab dashboards, and test builds. W
 
 ## macOS
 
-Menubar app for Tailscale users. It shows discovered web services at a glance, opens them in your browser, and auto-refreshes every 60 seconds.
+Menubar app for Tailscale users. It shows discovered web services at a glance, opens them in your browser, and gives you one-click refresh when services change.
 
 ![WebFinder menubar app](docs/mac-dark.png)
 
@@ -38,13 +38,13 @@ On Linux, install the CLI publisher:
 curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash
 ```
 
-Then start sharing that device:
+Then start sharing each Mac/Linux device you want remote clients to discover:
 
 ```bash
 web-finder start
 ```
 
-That starts the local manifest server at boot and publishes detected local web UIs through Tailscale Serve. Remote WebFinder clients fetch that manifest instead of port-scanning your peers.
+That starts the local manifest server, enables autostart where supported, and publishes detected local web UIs through Tailscale Serve. Remote WebFinder clients fetch that manifest instead of port-scanning your peers.
 
 Release and App Store submission notes for maintainers live in [docs/release.md](docs/release.md).
 
@@ -58,10 +58,10 @@ curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/uninstall.s
 
 ```bash
 web-finder                   # Find local services and Tailscale-published peer services
-web-finder start             # Start sharing this machine over Tailscale Serve at boot
-web-finder stop              # Stop sharing and disable boot autostart
+web-finder start             # Start sharing this machine over Tailscale Serve and enable autostart
+web-finder stop              # Stop sharing and disable autostart
 web-finder status            # Check daemon, Tailscale Serve, MagicDNS, and version
-web-finder update            # Pull latest version and restart sharing
+web-finder update            # Update WebFinder and restart sharing
 web-finder version           # Show version
 web-finder --json            # JSON output for apps/scripts
 web-finder --debug           # Noisy diagnostics, all open ports, and no-service peers
@@ -72,7 +72,7 @@ web-finder --debug           # Noisy diagnostics, all open ports, and no-service
 WebFinder for Tailscale is intentionally Tailscale-first:
 
 - Each Mac/Linux device scans only itself.
-- `web-finder start` publishes a small manifest at `/.well-known/web-finder.json` on port `9321`.
+- `web-finder start` publishes a small manifest at `/.well-known/web-finder.json` on port `9321` and enables autostart where supported.
 - Tailscale Serve exposes that manifest and the discovered service URLs to your tailnet.
 - Other clients fetch peer manifests instead of scanning peer ports.
 - Normal output hides protocol/API-only ports and peers with no services. Use `web-finder --debug` for the noisy view.
