@@ -50,7 +50,7 @@ That starts the local manifest server, enables autostart where supported, and pu
 
 Release and App Store submission notes for maintainers live in [docs/release.md](docs/release.md).
 
-To uninstall:
+To uninstall from macOS or Linux:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/uninstall.sh | bash
