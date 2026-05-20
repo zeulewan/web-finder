@@ -8,6 +8,8 @@ Stop bookmarking admin pages, docs sites, homelab dashboards, and test builds. F
 
 **[zeulewan.github.io/web-finder](https://zeulewan.github.io/web-finder/)**
 
+Setup details: [zeulewan.github.io/web-finder/docs.html](https://zeulewan.github.io/web-finder/docs.html)
+
 ## macOS
 
 Menubar app for Tailscale users. It shows discovered web services at a glance, opens them in your browser, and gives you one-click refresh when services change.

@@ -13,6 +13,7 @@ scripts/bump-version.sh X.Y.Z [IOS_BUILD]
 It updates:
 
 - `cli/package.json`
+- `cli/package-lock.json`
 - `macos/Info.plist`
 - `ios/WebFinder/Info.plist`
 - `ios/WebFinder.xcodeproj/project.pbxproj`

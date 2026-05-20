@@ -32,6 +32,15 @@ pkg.version = process.argv[1];
 fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
 ' "$version"
 
+node -e '
+const fs = require("fs");
+const file = "cli/package-lock.json";
+const lock = JSON.parse(fs.readFileSync(file, "utf8"));
+lock.version = process.argv[1];
+if (lock.packages && lock.packages[""]) lock.packages[""].version = process.argv[1];
+fs.writeFileSync(file, JSON.stringify(lock, null, 2) + "\n");
+' "$version"
+
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" macos/Info.plist
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $version" macos/Info.plist
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" ios/WebFinder/Info.plist

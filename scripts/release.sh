@@ -43,7 +43,7 @@ else
   ditto --norsrc -c -k --keepParent macos/WebFinder.app WebFinder.app.zip
 fi
 
-git add AGENTS.md CLAUDE.md PRIVACY.md README.md cli/package.json docs/index.html docs/privacy.html ios/WebFinder.xcodeproj/project.pbxproj ios/WebFinder/Info.plist macos/Info.plist macos/build.sh scripts
+git add AGENTS.md CLAUDE.md PRIVACY.md README.md cli/package.json cli/package-lock.json docs/index.html docs/privacy.html ios/WebFinder.xcodeproj/project.pbxproj ios/WebFinder/Info.plist macos/Info.plist macos/build.sh scripts
 git commit -m "Bump version to $version"
 git tag "$tag"
 git push origin main "$tag"

@@ -11,9 +11,9 @@ Network service discovery tool for Tailscale networks. CLI, macOS menu bar app, 
 
 ## Key concepts
 
-- **Default discovery model**: Local clients scan their own machine; remote clients fetch manifests from peers instead of port-scanning them. A peer only shows remote services after Web Finder is installed and `web-finder start` has been run on that peer.
-- **Manifest server** (`web-finder serve`, normally launched by `web-finder start`): HTTP server bound to `127.0.0.1:9321` that dynamically scans localhost and serves `/.well-known/web-finder.json`.
-- **Tailscale Serve publishing**: `web-finder start` enables Tailscale Serve for the manifest and detected local web UIs. The manifest server re-syncs Serve mappings during manifest refreshes so services started after boot can appear remotely. HTTP backends use `http://127.0.0.1:PORT`; HTTPS/self-signed backends use `https+insecure://127.0.0.1:PORT`.
+- **Default discovery model**: Remote clients fetch manifests from peers instead of port-scanning them. A peer only shows remote services after Web Finder is installed and `web-finder start` has been run on that peer.
+- **Manifest server** (`web-finder serve`, normally launched by `web-finder start`): HTTP server bound to `127.0.0.1:9321` that serves `/.well-known/web-finder.json`.
+- **Tailscale Serve publishing**: `web-finder start` exposes the manifest through Tailscale Serve, then advertises only local web UIs already present in `tailscale serve status`. `web-finder start --auto-publish` is the explicit opt-in mode that creates Tailscale Serve mappings for detected local web UIs. Auto-publish is a start mode, not a toggle; use `web-finder stop` then plain `web-finder start` to leave it. HTTP backends use `http://127.0.0.1:PORT`; HTTPS/self-signed backends use `https+insecure://127.0.0.1:PORT`.
 - **Tailscale serve detection**: The manifest server parses `tailscale serve status` to detect HTTPS proxies and reports `https://` URLs for those ports. Clients use the peer's DNS name (not raw IP) for HTTPS since TLS certs are issued for `.ts.net`.
 - **MagicDNS fallback**: If MagicDNS lookup fails, clients may use IP+SNI fallback for manifest fetches and warn that clickable `.ts.net` links need `tailscale set --accept-dns=true`.
 - **iOS peer scan behavior**: Normal scans skip API-offline peers. Debug mode includes more diagnostics/noisy peers.
@@ -60,14 +60,14 @@ scripts/archive-ios-appstore.sh X.Y.Z
   - Terminal App Store Connect submission helper:
     `scripts/submit-ios-appstore.py X.Y.Z`
   - For CLI upload, set `APP_STORE_CONNECT_KEY_PATH`, `APP_STORE_CONNECT_KEY_ID`, and `APP_STORE_CONNECT_ISSUER_ID`. If terminal upload fails with `App Store Connect Credentials Error`, use Xcode Organizer or configure those credentials locally. Do not document local key filenames/paths in this repo.
-- **Manifest/server rollout**: Prefer `web-finder update` on the target machine. It pulls latest, rebuilds/updates the macOS app when applicable, restarts sharing, and reapplies Tailscale Serve. Use `web-finder start` to enable sharing on a fresh install.
-- Bump versions with `scripts/bump-version.sh X.Y.Z [IOS_BUILD]`. It updates `cli/package.json`, `macos/Info.plist`, `ios/WebFinder/Info.plist`, `ios/WebFinder.xcodeproj/project.pbxproj`, and the website badge.
+- **Manifest/server rollout**: Prefer `web-finder update` on the target machine. It pulls latest, rebuilds/updates the macOS app when applicable, restarts the manifest publisher, and reapplies the manifest Tailscale Serve mapping. Use `web-finder start` to enable the passive publisher on a fresh install, or `web-finder start --auto-publish` when you intentionally want WebFinder to create service mappings.
+- Bump versions with `scripts/bump-version.sh X.Y.Z [IOS_BUILD]`. It updates `cli/package.json`, `cli/package-lock.json`, `macos/Info.plist`, `ios/WebFinder/Info.plist`, `ios/WebFinder.xcodeproj/project.pbxproj`, and the website badge.
 
 ## Testing changes
 
-- After changing `cli/scanner.js` manifest/serve logic, test the full chain on at least two devices: run `web-finder update` or deploy the branch, then run `web-finder start`, `web-finder status`, and `web-finder --json`.
+- After changing `cli/scanner.js` manifest/serve logic, test the full chain on at least two devices: run `web-finder update` or deploy the branch, then run `web-finder start`, `web-finder status`, and `web-finder --json`. Also test `web-finder start --auto-publish` when touching auto-publish behavior.
 - Test manifest access through Tailscale Serve with `curl -k https://PEER_DNS:9321/.well-known/web-finder.json`; the server should not need to bind to `0.0.0.0`.
-- Test advertised service URLs from another device, especially HTTPS/self-signed local services that require the `https+insecure` Tailscale Serve backend.
+- Test advertised service URLs from another device, especially HTTPS/self-signed local services that require the `https+insecure` Tailscale Serve backend. Plain `web-finder start` should not create new service mappings.
 - After changing macOS `Scanner.swift`, run `bash build.sh` and relaunch
 - After changing iOS `Scanner.swift`, build and install to device via `xcrun devicectl`
 - Always compare CLI and app output for parity on Mac, workstation, and iOS when changing discovery behavior.
