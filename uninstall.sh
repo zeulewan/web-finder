@@ -129,7 +129,7 @@ elif [ -x "$HOME/.web-finder/cli/bin/web-finder" ]; then
 fi
 
 if [ -n "$WEB_FINDER_BIN" ]; then
-    if "$WEB_FINDER_BIN" stop; then
+    if "$WEB_FINDER_BIN" stop >/dev/null 2>&1; then
         info "Stopped WebFinder sharing"
     else
         warn "Could not stop WebFinder sharing cleanly; continuing uninstall"
