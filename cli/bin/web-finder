@@ -57,7 +57,7 @@ function tailscaleCommand() {
 function execTailscale(args, options = {}) {
   const cmd = tailscaleCommand();
   if (!cmd) throw new Error('tailscale command not found');
-  return execSync(`${quoteShell(cmd)} ${args}`, { encoding: 'utf8', ...options });
+  return execSync(`${quoteShell(cmd)} ${args}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options });
 }
 
 function currentTailscaleOperator() {
