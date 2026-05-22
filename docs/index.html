@@ -351,6 +351,10 @@
       line-height: 1.6;
       padding-right: 52px;
     }
+    .prompt-block code {
+      white-space: pre-wrap;
+      word-break: normal;
+    }
     .copy-btn {
       position: absolute;
       top: 10px;
@@ -763,10 +767,10 @@
   <p class="fade-up">Discover dashboards, docs, admin pages, and test builds already exposed with Tailscale Serve. Install WebFinder on each Mac/Linux peer you want listed.</p>
 
   <div class="platforms fade-up">
-    <div class="platform-tag">
+    <a class="platform-tag" href="#install">
       <div class="dot dot-green"></div>
       macOS app + macOS/Linux CLI
-    </div>
+    </a>
     <a class="platform-tag" href="https://apps.apple.com/app/web-finder-for-tailscale/id6759476914" target="_blank" rel="noopener">
       <div class="dot dot-cyan"></div>
       iOS - iPhone + iPad app
@@ -857,7 +861,7 @@
 <!-- INSTALL -->
 <div class="content-section fade-up" id="install">
   <h2>Install</h2>
-  <p class="section-sub">Install the app, then start the CLI manifest publisher on devices you want to discover.</p>
+  <p class="section-sub">Install the app, start the CLI publisher, or hand the prompt to an agent on a Mac or Linux device.</p>
 
   <div class="install-grid">
 
@@ -918,6 +922,27 @@
         <li>Requires Node.js LTS; apt-based distros install it automatically</li>
         <li>Adds <code>web-finder</code> CLI to PATH</li>
         <li>Run <code>web-finder start --auto-publish</code> for recommended setup</li>
+      </ol>
+    </div>
+
+    <!-- Agent install -->
+    <div class="install-card">
+      <h3>
+        <svg width="16" height="16" fill="var(--cyan)" viewBox="0 0 16 16">
+          <path d="M8 1a.5.5 0 0 1 .5.5V2h2A1.5 1.5 0 0 1 12 3.5V4h.5A1.5 1.5 0 0 1 14 5.5v5A1.5 1.5 0 0 1 12.5 12H12v.5A1.5 1.5 0 0 1 10.5 14h-5A1.5 1.5 0 0 1 4 12.5V12h-.5A1.5 1.5 0 0 1 2 10.5v-5A1.5 1.5 0 0 1 3.5 4H4v-.5A1.5 1.5 0 0 1 5.5 2h2v-.5A.5.5 0 0 1 8 1zM5.5 3a.5.5 0 0 0-.5.5V4h6v-.5a.5.5 0 0 0-.5-.5h-5zM3 5.5v5a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-5a.5.5 0 0 0-.5-.5h-9a.5.5 0 0 0-.5.5zM5 12v.5a.5.5 0 0 0 .5.5h5a.5.5 0 0 0 .5-.5V12H5z"/>
+          <path d="M5.5 7.75A.75.75 0 1 0 5.5 6.25a.75.75 0 0 0 0 1.5zm5 0a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5zM5.5 9.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1H6a.5.5 0 0 1-.5-.5z"/>
+        </svg>
+        Agent install
+      </h3>
+      <p class="card-sub">Copy this prompt into an agent with terminal access to the device</p>
+      <div class="code-block prompt-block">
+        <code>Install WebFinder from https://github.com/zeulewan/web-finder on this Mac or Linux device. It is fully free and open source, MIT licensed, and auditable, so inspect the repo and install script first if you do not trust it. On macOS, install with: brew install --cask zeulewan/tap/webfinder. On Linux, install with: curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash. Use the documented install command for this OS; if it needs sudo or fails, explain why before using a custom install path. After installing, explain the two start modes: passive web-finder start, or web-finder start --auto-publish for individual setups. Ask which mode I want before starting it. Only use --auto-publish if I explicitly confirm, because it creates Tailscale Serve mappings for detected local web UIs. After I choose, start WebFinder in that mode, then verify the install with web-finder version and web-finder status. If status shows Tailscale Serve permission errors, report the exact fix it recommends.</code>
+        <button class="copy-btn" onclick="copyBlock(this)">Copy</button>
+      </div>
+      <ol class="steps">
+        <li>Works for Mac or Linux devices where an agent has shell access</li>
+        <li>Asks before enabling auto-publish</li>
+        <li>Keeps the install auditable from source</li>
       </ol>
     </div>
 
@@ -1082,6 +1107,11 @@
     } else {
       fallbackCopy(text, succeed);
     }
+  }
+
+  function copyBlock(btn) {
+    const code = btn.parentElement.querySelector('code');
+    copy(btn, code ? code.innerText.trim() : '');
   }
 
   function fallbackCopy(text, succeed) {
