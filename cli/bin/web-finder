@@ -4,8 +4,8 @@
  *
  * Usage:
  *   web-finder                 # Scan local + Tailscale, human-readable
- *   web-finder start           # Start manifest publisher and enable autostart
- *   web-finder start --auto-publish
+ *   web-finder start --auto-publish  # Recommended setup
+ *   web-finder start                 # Passive default
  *                               # Also publish detected local web UIs
  *   web-finder stop            # Stop sharing and disable autostart
  *   web-finder status          # Check daemon, Tailscale Serve, DNS, version
@@ -693,9 +693,9 @@ Usage: web-finder [command] [options]
 
 Commands:
   web-finder              Find local services and Tailscale-published peer services
-  web-finder start        Start the manifest daemon and enable autostart
   web-finder start --auto-publish
-                          Also publish detected local web UIs with Tailscale Serve
+                          Recommended: publish detected local web UIs with Tailscale Serve
+  web-finder start        Passive default: advertise existing Tailscale Serve mappings
   web-finder stop         Stop sharing this machine and disable autostart
   web-finder status       Check daemon, Tailscale Serve, MagicDNS, and version
   web-finder update       Update WebFinder and restart sharing
@@ -709,14 +709,14 @@ Options:
   --help, -h          Show this help
 
 By default, web-finder only shows machines that are actually serving something.
-The publisher only advertises services already exposed with Tailscale Serve unless
-you start it with --auto-publish.
+Recommended setup is web-finder start --auto-publish. It is not the default:
+plain web-finder start only advertises services already exposed with Tailscale Serve.
 Use --debug when you need the full/noisy view.
 
 Examples:
   web-finder
-  web-finder start
   web-finder start --auto-publish
+  web-finder start
   web-finder status
   web-finder --debug
   web-finder --json

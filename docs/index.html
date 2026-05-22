@@ -896,7 +896,7 @@
         <li>Installs <code>WebFinder.app</code> to Applications</li>
         <li>Installs the <code>web-finder</code> CLI publisher</li>
         <li>Works with Gatekeeper as a notarized Developer ID app</li>
-        <li>Run <code>web-finder start</code> to advertise this Mac's Tailscale-served web UIs</li>
+        <li>Run <code>web-finder start --auto-publish</code> for recommended setup</li>
       </ol>
     </div>
 
@@ -917,7 +917,7 @@
         <li>Clones repo to <code>~/.web-finder</code></li>
         <li>Requires Node.js LTS; apt-based distros install it automatically</li>
         <li>Adds <code>web-finder</code> CLI to PATH</li>
-        <li>Run <code>web-finder start</code> to advertise this device's Tailscale-served web UIs</li>
+        <li>Run <code>web-finder start --auto-publish</code> for recommended setup</li>
       </ol>
     </div>
 
@@ -935,7 +935,7 @@
 <!-- FEATURES -->
 <div class="content-section fade-up" id="features">
   <h2>How discovery works</h2>
-  <p class="section-sub">Local devices publish a small manifest of web UIs already exposed with Tailscale Serve.</p>
+  <p class="section-sub">Use auto-publish for the recommended setup, or plain start for passive discovery.</p>
 
   <div class="features-grid">
     <div class="feature-card">
@@ -946,12 +946,12 @@
     <div class="feature-card">
       <div class="feature-icon">&#x1F50D;</div>
       <h4>Local smart detection</h4>
-      <p>Each publisher fetches titles from local ports already mapped by Tailscale Serve. Auto-publish mode can scan detected listening web ports.</p>
+      <p>Each publisher fetches titles locally. Recommended auto-publish mode can create Tailscale Serve mappings for detected listening web ports.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">&#x1F512;</div>
       <h4>Tailnet-safe sharing</h4>
-      <p><code>web-finder start</code> runs the background publisher, enables autostart, and advertises services already exposed with Tailscale Serve. Add <code>--auto-publish</code> to let WebFinder create Tailscale Serve mappings for detected local web UIs.</p>
+      <p><code>web-finder start --auto-publish</code> is recommended and lets WebFinder create Tailscale Serve mappings for detected local web UIs. Plain <code>web-finder start</code> is the passive default and only advertises existing mappings.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">&#x1F4CB;</div>
@@ -973,11 +973,11 @@
     </div>
     <div class="cli-row">
       <span class="cmd-text">web-finder start</span>
-      <span class="desc">Start the manifest publisher and enable autostart where available</span>
+      <span class="desc">Passive default: advertise existing Tailscale Serve mappings</span>
     </div>
     <div class="cli-row">
       <span class="cmd-text">web-finder start --auto-publish</span>
-      <span class="desc">Also publish detected local web UIs with Tailscale Serve</span>
+      <span class="desc">Recommended: publish detected local web UIs with Tailscale Serve</span>
     </div>
     <div class="cli-row">
       <span class="cmd-text">web-finder stop</span>
@@ -1034,7 +1034,7 @@
 
     <details class="faq-item">
       <summary>Is there a daemon or autostart?</summary>
-      <div class="faq-answer">Yes. Run <code>web-finder start</code> once on each Mac or Linux device you want to advertise. It starts the local manifest daemon, enables autostart where supported, and exposes only the manifest through Tailscale Serve by default. Use <code>web-finder start --auto-publish</code> if you want WebFinder to create Tailscale Serve mappings for detected local web UIs. macOS uses a LaunchAgent, most Linux systems use a systemd user service, and Synology/non-systemd systems fall back to cron when available.</div>
+      <div class="faq-answer">Yes. Run <code>web-finder start --auto-publish</code> once on each Mac or Linux device for the recommended setup. It starts the local manifest daemon, enables autostart where supported, and lets WebFinder create Tailscale Serve mappings for detected local web UIs. Plain <code>web-finder start</code> remains the passive default and only advertises mappings you already created. macOS uses a LaunchAgent, most Linux systems use a systemd user service, and Synology/non-systemd systems fall back to cron when available.</div>
     </details>
 
     <details class="faq-item">

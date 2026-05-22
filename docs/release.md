@@ -148,10 +148,11 @@ If the App Store build still shows a dev label, check `ios/WebFinder/Info.plist`
 When changing manifest, Tailscale Serve, or scanner behavior:
 
 ```bash
+web-finder start --auto-publish
 web-finder status
 web-finder --json
 web-finder
 curl -k https://PEER_DNS:9321/.well-known/web-finder.json
 ```
 
-Test from at least two devices. Compare CLI, macOS app, and iOS output. Remote devices should fetch WebFinder manifests from peers, not port-scan peers. A peer only appears with services after WebFinder is installed and `web-finder start` has run on that peer.
+Test from at least two devices. Compare CLI, macOS app, and iOS output. Remote devices should fetch WebFinder manifests from peers, not port-scan peers. A peer only appears with services after WebFinder is installed and started on that peer. `web-finder start --auto-publish` is the recommended setup, but plain `web-finder start` must remain the passive default and must not create new service mappings.

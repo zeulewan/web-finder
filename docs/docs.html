@@ -174,7 +174,7 @@
   <main>
     <header>
       <h1>Docs</h1>
-      <p>WebFinder lists web interfaces across your tailnet without scanning peer machines. By default, it only advertises services you already exposed with Tailscale Serve.</p>
+      <p>WebFinder lists web interfaces across your tailnet without scanning peer machines. The recommended setup is <code>web-finder start --auto-publish</code>, but plain <code>web-finder start</code> remains the passive default.</p>
     </header>
 
     <section>
@@ -187,7 +187,7 @@
         </div>
         <div class="card">
           <h3>Auto-Publish Mode</h3>
-          <p><code>web-finder start --auto-publish</code> lets WebFinder create Tailscale Serve mappings for detected local web UIs. This mode is explicit and opt-in.</p>
+          <p><code>web-finder start --auto-publish</code> is recommended for most setups. It lets WebFinder create Tailscale Serve mappings for detected local web UIs, but it is explicit and not the default.</p>
         </div>
       </div>
       <p class="note">Auto-publish is a start mode, not a toggle. To leave auto-publish mode, run <code>web-finder stop</code>, then restart with plain <code>web-finder start</code>.</p>
@@ -195,16 +195,18 @@
 
     <section>
       <h2>Setup</h2>
-      <h3>Expose a service with Tailscale Serve</h3>
-      <pre><code>tailscale serve --bg --https=3000 http://127.0.0.1:3000</code></pre>
-      <h3>Start WebFinder on that device</h3>
-      <pre><code>web-finder start</code></pre>
-      <p>WebFinder publishes its manifest on port <code>9321</code>, then advertises the Tailscale-served web UIs it finds locally.</p>
+      <h3>Recommended setup</h3>
+      <pre><code>web-finder start --auto-publish</code></pre>
+      <p>WebFinder publishes its manifest on port <code>9321</code>, enables autostart, and creates Tailscale Serve mappings for detected local web UIs.</p>
+      <h3>Passive/default setup</h3>
+      <pre><code>tailscale serve --bg --https=3000 http://127.0.0.1:3000
+web-finder start</code></pre>
+      <p>Use this when you want to manage Tailscale Serve mappings yourself. WebFinder only advertises mappings already present in <code>tailscale serve status</code>.</p>
     </section>
 
     <section>
       <h2>Autostart</h2>
-      <p><code>web-finder start</code> enables autostart where supported, so the manifest daemon comes back after reboot.</p>
+      <p><code>web-finder start --auto-publish</code> and plain <code>web-finder start</code> both enable autostart where supported, so the manifest daemon comes back after reboot.</p>
       <ul>
         <li>macOS uses a LaunchAgent.</li>
         <li>Most Linux systems use a systemd user service.</li>
