@@ -914,8 +914,8 @@
       </h3>
       <p class="card-sub">CLI publisher for Linux devices on your tailnet</p>
       <div class="code-block">
-        <code>curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash</code>
-        <button class="copy-btn" onclick="copy(this, 'curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash')">Copy</button>
+        <code>curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/refs/heads/main/install.sh | bash</code>
+        <button class="copy-btn" onclick="copy(this, 'curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/refs/heads/main/install.sh | bash')">Copy</button>
       </div>
       <ol class="steps">
         <li>Clones repo to <code>~/.web-finder</code></li>
@@ -937,7 +937,7 @@
       </h3>
       <p class="card-sub">Copy this prompt into an agent with terminal access to the device</p>
       <div class="code-block prompt-block">
-        <code>Install WebFinder from https://github.com/zeulewan/web-finder on this Mac or Linux device. It is fully free and open source, MIT licensed, and auditable, so inspect the repo and install script first if you do not trust it. On macOS, install with: brew install --cask zeulewan/tap/webfinder. On Linux, install with: curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash. Use the documented install command for this OS; if it needs sudo or fails, explain why before using a custom install path. After installing, explain the two start modes: passive web-finder start, or web-finder start --auto-publish for individual setups. Ask which mode I want before starting it. Only use --auto-publish if I explicitly confirm, because it creates Tailscale Serve mappings for detected local web UIs. If WebFinder prompts for local Tailscale operator permission on Linux, explain that it lets WebFinder manage Tailscale Serve mappings without running as root and ask before answering yes; sudo may ask for my password the first time. After I choose, start WebFinder in that mode, then verify the install with web-finder version and web-finder status. If status shows Tailscale Serve permission errors, report the exact fix it recommends.</code>
+        <code>Install WebFinder from https://github.com/zeulewan/web-finder on this Mac or Linux device. It is fully free and open source, MIT licensed, and auditable, so inspect the repo and install script first if you do not trust it. On macOS, install with: brew install --cask zeulewan/tap/webfinder. On Linux, install with: curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/refs/heads/main/install.sh | bash. Use the documented install command for this OS; if it needs sudo or fails, explain why before using a custom install path. After installing, explain the two start modes: passive web-finder start, or web-finder start --auto-publish for individual setups. Ask which mode I want before starting it. Only use --auto-publish if I explicitly confirm, because it creates Tailscale Serve mappings for detected local web UIs. If WebFinder prompts for local Tailscale operator permission on Linux, explain that it lets WebFinder manage Tailscale Serve mappings without running as root and ask before answering yes; sudo may ask for my password the first time. After I choose, start WebFinder in that mode, then verify the install with web-finder version and web-finder status. If status shows Tailscale Serve permission errors, report the exact fix it recommends.</code>
         <button class="copy-btn" onclick="copyBlock(this)">Copy</button>
       </div>
       <ol class="steps">
@@ -952,8 +952,8 @@
   <div class="uninstall fade-up" style="margin-top: 32px; text-align: center;">
     <p style="font-size: 13px; color: var(--text-faint); margin-bottom: 8px;">To uninstall from macOS or Linux:</p>
     <div class="code-block" style="max-width: 560px; margin: 0 auto;">
-      <code>curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/uninstall.sh | bash</code>
-      <button class="copy-btn" onclick="copy(this, 'curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/uninstall.sh | bash')">Copy</button>
+      <code>curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/refs/heads/main/uninstall.sh | bash</code>
+      <button class="copy-btn" onclick="copy(this, 'curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/refs/heads/main/uninstall.sh | bash')">Copy</button>
     </div>
   </div>
 </div>

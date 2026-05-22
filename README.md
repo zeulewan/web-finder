@@ -39,7 +39,7 @@ brew install --cask zeulewan/tap/webfinder
 On Linux, install the CLI publisher:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/refs/heads/main/install.sh | bash
 ```
 
 Then start the manifest publisher on each Mac/Linux device you want remote clients to discover. Recommended setup:
@@ -63,7 +63,7 @@ Release and App Store submission notes for maintainers live in [docs/release.md]
 To uninstall from macOS or Linux:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/uninstall.sh | bash
+curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/refs/heads/main/uninstall.sh | bash
 ```
 
 ## CLI
