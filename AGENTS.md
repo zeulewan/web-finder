@@ -19,6 +19,11 @@ Network service discovery tool for Tailscale networks. CLI, macOS menu bar app, 
 - **iOS peer scan behavior**: Normal scans skip API-offline peers. Debug mode includes more diagnostics/noisy peers.
 - **Zensical process detection**: On Linux, reads `/proc/PID/cwd` to get project directory names for zensical dev servers instead of generic process names.
 
+## Agent install guidance
+
+- When installing WebFinder for a user, explain the two publisher modes before starting it. Plain `web-finder start` is passive and only advertises services the user already exposed with Tailscale Serve.
+- Ask the user before using `web-finder start --auto-publish`. Auto-publish is convenient for individual setups because it creates Tailscale Serve mappings for detected local web UIs, but those services become reachable to devices/users allowed by the tailnet's Tailscale ACLs. Do not enable it silently.
+
 ## Building
 
 ```bash
