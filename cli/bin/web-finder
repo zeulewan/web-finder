@@ -25,6 +25,7 @@ const os   = require('os');
 const dns  = require('dns').promises;
 
 const AUTO_PUBLISH_STATE = path.join(os.homedir(), '.web-finder-auto-published-ports');
+const LAUNCHD_PATH = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin';
 
 const pkg  = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
 const TAILSCALE_PATHS = [
@@ -104,6 +105,13 @@ function preferredBinPath() {
     realBin,
   ];
   return candidates.find(candidate => candidate && fs.existsSync(candidate) && sameRealPath(candidate, realBin)) || realBin;
+}
+
+function autostartNodeCommand() {
+  if (process.platform === 'darwin') {
+    return ['/usr/bin/env', 'node'];
+  }
+  return [process.execPath];
 }
 
 function isGitCheckout() {
@@ -283,26 +291,26 @@ async function printStatus({ debug = false } = {}) {
 // MARK: - Autostart helpers
 
 function getAutostartInfo() {
-  const nodePath = process.execPath;
+  const nodeCommand = autostartNodeCommand();
   const binPath  = preferredBinPath();
   if (process.platform === 'darwin') {
     return {
       type: 'launchd',
       plist: path.join(os.homedir(), 'Library', 'LaunchAgents', 'com.zeul.web-finder-serve.plist'),
-      nodePath, binPath,
+      nodeCommand, binPath,
     };
   }
   if (isSynology() || !hasCommand('systemctl')) {
     return {
       type: 'cron',
       pidfile: path.join(os.homedir(), '.web-finder-serve.pid'),
-      nodePath, binPath,
+      nodeCommand, binPath,
     };
   }
   return {
     type: 'systemd',
     unit: path.join(os.homedir(), '.config', 'systemd', 'user', 'web-finder-serve.service'),
-    nodePath, binPath,
+    nodeCommand, binPath,
   };
 }
 
@@ -374,9 +382,13 @@ function setupAutostart({ autoPublish = false } = {}) {
 <plist version="1.0">
 <dict>
     <key>Label</key><string>com.zeul.web-finder-serve</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key><string>${LAUNCHD_PATH}</string>
+    </dict>
     <key>ProgramArguments</key>
     <array>
-        <string>${info.nodePath}</string>
+        ${info.nodeCommand.map(arg => `<string>${arg}</string>`).join('\n        ')}
         <string>${info.binPath}</string>
         ${serveArgs.map(arg => `<string>${arg}</string>`).join('\n        ')}
     </array>
@@ -394,7 +406,7 @@ function setupAutostart({ autoPublish = false } = {}) {
     } else if (info.type === 'cron') {
       const marker = '# web-finder-serve';
       if (hasCommand('crontab')) {
-        const cronLine = `@reboot ${quoteShell(info.nodePath)} ${quoteShell(info.binPath)} ${serveArgs.map(quoteShell).join(' ')} >> /tmp/web-finder-serve.log 2>&1 ${marker}`;
+        const cronLine = `@reboot ${info.nodeCommand.map(quoteShell).join(' ')} ${quoteShell(info.binPath)} ${serveArgs.map(quoteShell).join(' ')} >> /tmp/web-finder-serve.log 2>&1 ${marker}`;
         let existing = '';
         try { existing = execSync('crontab -l 2>/dev/null', { encoding: 'utf8' }); } catch {}
         const next = existing
@@ -416,7 +428,7 @@ function setupAutostart({ autoPublish = false } = {}) {
           try { execSync(`kill ${pid}`, { encoding: 'utf8' }); } catch {}
         }
       }
-      const startCmd = `nohup ${quoteShell(info.nodePath)} ${quoteShell(info.binPath)} ${serveArgs.map(quoteShell).join(' ')} >> /tmp/web-finder-serve.log 2>&1 & echo $! > ${quoteShell(info.pidfile)}`;
+      const startCmd = `nohup ${info.nodeCommand.map(quoteShell).join(' ')} ${quoteShell(info.binPath)} ${serveArgs.map(quoteShell).join(' ')} >> /tmp/web-finder-serve.log 2>&1 & echo $! > ${quoteShell(info.pidfile)}`;
       execSync(startCmd, { encoding: 'utf8' });
       console.log('Manifest server started.');
     } else {
@@ -424,7 +436,7 @@ function setupAutostart({ autoPublish = false } = {}) {
 Description=web-finder manifest server
 
 [Service]
-ExecStart=${info.nodePath} ${info.binPath} ${serveArgs.join(' ')}
+ExecStart=${info.nodeCommand.join(' ')} ${info.binPath} ${serveArgs.join(' ')}
 Restart=on-failure
 RestartSec=5
 
