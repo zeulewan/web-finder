@@ -35,15 +35,15 @@ if [[ "$OS" == "mac" ]]; then
 
     info "Installing WebFinder.app and CLI with Homebrew..."
     if brew list --formula zeulewan/tap/web-finder &>/dev/null || brew list --formula web-finder &>/dev/null; then
-        brew upgrade zeulewan/tap/web-finder
+        brew upgrade zeulewan/tap/web-finder </dev/null
     else
-        brew install zeulewan/tap/web-finder
+        brew install zeulewan/tap/web-finder </dev/null
     fi
 
     if brew list --cask zeulewan/tap/webfinder &>/dev/null || brew list --cask webfinder &>/dev/null; then
-        brew upgrade --cask zeulewan/tap/webfinder
+        brew upgrade --cask zeulewan/tap/webfinder </dev/null
     else
-        brew install --cask zeulewan/tap/webfinder
+        brew install --cask zeulewan/tap/webfinder </dev/null
     fi
 
     legacy_bin="/usr/local/bin/web-finder"
