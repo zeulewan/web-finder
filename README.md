@@ -50,6 +50,8 @@ web-finder start --auto-publish
 
 That starts the local manifest server, enables autostart where supported, and lets WebFinder publish detected local web UIs through Tailscale Serve. Remote WebFinder clients fetch that manifest instead of port-scanning your peers.
 
+On Linux, auto-publish may prompt to set the current Unix user as the local Tailscale operator. This lets WebFinder manage Tailscale Serve mappings for detected web UIs without running as root. `sudo` may ask for your password the first time.
+
 Passive/default mode is still available if you only want to advertise web UIs you already exposed yourself with Tailscale Serve:
 
 ```bash
@@ -85,6 +87,7 @@ WebFinder for Tailscale is intentionally Tailscale-first:
 - For remote discovery, each Mac/Linux publisher reads its own Tailscale Serve mappings and fetches titles locally.
 - `web-finder start --auto-publish` is the recommended setup: it publishes a small manifest at `/.well-known/web-finder.json` on port `9321`, enables autostart where supported, and asks Tailscale Serve to expose detected local web UIs.
 - Auto-publish is not the default. Plain `web-finder start` stays passive and only advertises local web UIs already exposed with Tailscale Serve.
+- On Linux, auto-publish may prompt to set the current Unix user as the local Tailscale operator so WebFinder can manage Tailscale Serve mappings without running as root.
 - `web-finder stop` removes the Tailscale Serve mappings WebFinder created in auto-publish mode.
 - Other clients fetch peer manifests instead of scanning peer ports.
 - Normal output hides protocol/API-only ports and peers with no services. Use `web-finder --debug` for the noisy view.

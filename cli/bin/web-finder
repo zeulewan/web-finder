@@ -60,6 +60,109 @@ function execTailscale(args, options = {}) {
   return execSync(`${quoteShell(cmd)} ${args}`, { encoding: 'utf8', ...options });
 }
 
+function currentTailscaleOperator() {
+  try {
+    const prefs = JSON.parse(execTailscale('debug prefs'));
+    return prefs.OperatorUser || '';
+  } catch {
+    return null;
+  }
+}
+
+function promptYesNo(question) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return false;
+  try {
+    process.stdout.write(`${question} [y/N] `);
+    const buf = Buffer.alloc(128);
+    const bytes = fs.readSync(0, buf, 0, buf.length, null);
+    const answer = buf.toString('utf8', 0, bytes).trim().toLowerCase();
+    return answer === 'y' || answer === 'yes';
+  } catch {
+    return false;
+  }
+}
+
+function tailscaleOperatorCommandForDisplay() {
+  return 'sudo tailscale set --operator=$USER';
+}
+
+function printAutoPublishPermissionInstructions() {
+  console.error('Auto-publish needs local Tailscale operator permission on Linux.');
+  console.error('Run once:');
+  console.error(`  ${tailscaleOperatorCommandForDisplay()}`);
+  console.error('');
+  console.error('Then rerun:');
+  console.error('  web-finder start --auto-publish');
+}
+
+function ensureLinuxAutoPublishPermission() {
+  if (process.platform !== 'linux') return true;
+
+  const user = os.userInfo().username;
+  if (!user || user === 'root') return true;
+
+  const currentOperator = currentTailscaleOperator();
+  if (currentOperator === null) return true;
+  if (currentOperator === user) return true;
+  if (currentOperator) {
+    console.error(`Tailscale operator is already set to ${currentOperator}. WebFinder will not change it.`);
+    console.error('Ask that user or an admin to run WebFinder, or update the Tailscale operator manually.');
+    return false;
+  }
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    printAutoPublishPermissionInstructions();
+    return false;
+  }
+
+  const cmd = tailscaleCommand();
+  if (!cmd) {
+    console.error('Auto-publish needs Tailscale, but the tailscale command was not found.');
+    return false;
+  }
+
+  console.log('');
+  console.log('Auto-publish needs local Tailscale operator permission on Linux so WebFinder can manage Tailscale Serve mappings for detected web UIs.');
+  console.log('');
+  console.log('Run this now?');
+  console.log(`  ${tailscaleOperatorCommandForDisplay()}`);
+  console.log('');
+
+  if (!promptYesNo('Continue?')) {
+    console.error('Auto-publish was not started. Run `web-finder start` for passive mode, or rerun `web-finder start --auto-publish` and approve the Tailscale operator setup.');
+    return false;
+  }
+
+  try {
+    execSync(`sudo ${quoteShell(cmd)} set --operator=${quoteShell(user)}`, { stdio: 'inherit' });
+  } catch (e) {
+    console.error('Failed to set Tailscale operator permission:', e.message);
+    return false;
+  }
+
+  const nextOperator = currentTailscaleOperator();
+  if (nextOperator && nextOperator !== user) {
+    console.error(`Tailscale operator is now set to ${nextOperator}, not ${user}. Auto-publish was not started.`);
+    return false;
+  }
+
+  return true;
+}
+
+function isTailscaleServePermissionError(error) {
+  const msg = error?.message || '';
+  return msg.includes('serve config denied') || msg.includes('tailscale set --operator');
+}
+
+function printTailscaleServePermissionHelp({ autoPublish = false } = {}) {
+  console.error('Tailscale Serve setup skipped: local Tailscale operator permission is required.');
+  console.error('Run once:');
+  console.error(`  ${tailscaleOperatorCommandForDisplay()}`);
+  console.error('');
+  console.error('Then rerun:');
+  console.error(`  web-finder start${autoPublish ? ' --auto-publish' : ''}`);
+}
+
 function readAutoPublishedPorts() {
   try {
     return fs.readFileSync(AUTO_PUBLISH_STATE, 'utf8')
@@ -314,12 +417,16 @@ function getAutostartInfo() {
   };
 }
 
-function setupTailscaleServe() {
+function setupTailscaleServe({ autoPublish = false } = {}) {
   try {
     try { execTailscale(`serve --http=${MANIFEST_PORT} off`); } catch {}
     execTailscale(`serve --bg --https=${MANIFEST_PORT} http://127.0.0.1:${MANIFEST_PORT}`);
     console.log('Tailscale Serve enabled for tailnet-only manifest access.');
   } catch (e) {
+    if (isTailscaleServePermissionError(e)) {
+      printTailscaleServePermissionHelp({ autoPublish });
+      return;
+    }
     console.error('Tailscale Serve setup skipped:', e.message);
   }
 }
@@ -450,7 +557,7 @@ WantedBy=default.target
       execSync('systemctl --user restart web-finder-serve', { encoding: 'utf8' });
       console.log('Autostart enabled (systemd).');
     }
-    setupTailscaleServe();
+    setupTailscaleServe({ autoPublish });
   } catch (e) {
     console.error('Autostart setup failed:', e.message);
   }
@@ -575,6 +682,8 @@ if (command === 'update' || args.includes('--update') || args.includes('-u')) {
     process.exit(1);
   }
 
+  if (autoPublishMode && !ensureLinuxAutoPublishPermission()) process.exit(1);
+
   // Set up autostart as part of every update
   setupAutostart({ autoPublish: autoPublishMode });
 
@@ -582,6 +691,7 @@ if (command === 'update' || args.includes('--update') || args.includes('-u')) {
 }
 
 if (command === 'start') {
+  if (autoPublishMode && !ensureLinuxAutoPublishPermission()) process.exit(1);
   setupAutostart({ autoPublish: autoPublishMode });
   process.exit(0);
 }
@@ -604,6 +714,7 @@ if (command === 'status' || command === 'diagnose') {
 if (args[0] === 'autostart') {
   const sub = args[1];
   if (sub === 'on' || sub === 'enable') {
+    if (autoPublishMode && !ensureLinuxAutoPublishPermission()) process.exit(1);
     setupAutostart({ autoPublish: autoPublishMode });
   } else if (sub === 'off' || sub === 'disable') {
     removeAutostart();
@@ -687,7 +798,7 @@ if (args[0] === 'serve') {
     console.log(`Endpoint: http://localhost:${servePort}${MANIFEST_PATH}`);
     (async () => {
       if (serveHost === '127.0.0.1' && servePort === MANIFEST_PORT && !noTsServe) {
-        setupTailscaleServe();
+        setupTailscaleServe({ autoPublish });
       }
       await refreshManifestCache();
     })().catch(e => console.error('Initial manifest refresh failed:', e.message));
@@ -723,6 +834,7 @@ Options:
 By default, web-finder only shows machines that are actually serving something.
 Recommended setup is web-finder start --auto-publish. It is not the default:
 plain web-finder start only advertises services already exposed with Tailscale Serve.
+On Linux, auto-publish may prompt to set local Tailscale operator permission.
 Use --debug when you need the full/noisy view.
 
 Examples:

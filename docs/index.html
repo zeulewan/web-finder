@@ -922,6 +922,7 @@
         <li>Requires Node.js LTS; apt-based distros install it automatically</li>
         <li>Adds <code>web-finder</code> CLI to PATH</li>
         <li>Run <code>web-finder start --auto-publish</code> for recommended setup</li>
+        <li>Auto-publish may prompt for local Tailscale operator permission</li>
       </ol>
     </div>
 
@@ -936,7 +937,7 @@
       </h3>
       <p class="card-sub">Copy this prompt into an agent with terminal access to the device</p>
       <div class="code-block prompt-block">
-        <code>Install WebFinder from https://github.com/zeulewan/web-finder on this Mac or Linux device. It is fully free and open source, MIT licensed, and auditable, so inspect the repo and install script first if you do not trust it. On macOS, install with: brew install --cask zeulewan/tap/webfinder. On Linux, install with: curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash. Use the documented install command for this OS; if it needs sudo or fails, explain why before using a custom install path. After installing, explain the two start modes: passive web-finder start, or web-finder start --auto-publish for individual setups. Ask which mode I want before starting it. Only use --auto-publish if I explicitly confirm, because it creates Tailscale Serve mappings for detected local web UIs. After I choose, start WebFinder in that mode, then verify the install with web-finder version and web-finder status. If status shows Tailscale Serve permission errors, report the exact fix it recommends.</code>
+        <code>Install WebFinder from https://github.com/zeulewan/web-finder on this Mac or Linux device. It is fully free and open source, MIT licensed, and auditable, so inspect the repo and install script first if you do not trust it. On macOS, install with: brew install --cask zeulewan/tap/webfinder. On Linux, install with: curl -sSL https://raw.githubusercontent.com/zeulewan/web-finder/main/install.sh | bash. Use the documented install command for this OS; if it needs sudo or fails, explain why before using a custom install path. After installing, explain the two start modes: passive web-finder start, or web-finder start --auto-publish for individual setups. Ask which mode I want before starting it. Only use --auto-publish if I explicitly confirm, because it creates Tailscale Serve mappings for detected local web UIs. If WebFinder prompts for local Tailscale operator permission on Linux, explain that it lets WebFinder manage Tailscale Serve mappings without running as root and ask before answering yes; sudo may ask for my password the first time. After I choose, start WebFinder in that mode, then verify the install with web-finder version and web-finder status. If status shows Tailscale Serve permission errors, report the exact fix it recommends.</code>
         <button class="copy-btn" onclick="copyBlock(this)">Copy</button>
       </div>
       <ol class="steps">
@@ -976,7 +977,7 @@
     <div class="feature-card">
       <div class="feature-icon">&#x1F512;</div>
       <h4>Tailnet-safe sharing</h4>
-      <p><code>web-finder start --auto-publish</code> is recommended and lets WebFinder create Tailscale Serve mappings for detected local web UIs. Plain <code>web-finder start</code> is the passive default and only advertises existing mappings.</p>
+      <p><code>web-finder start --auto-publish</code> is recommended and lets WebFinder create Tailscale Serve mappings for detected local web UIs. On Linux, it may prompt for local Tailscale operator permission. Plain <code>web-finder start</code> is the passive default and only advertises existing mappings.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">&#x1F4CB;</div>
@@ -1002,7 +1003,7 @@
     </div>
     <div class="cli-row">
       <span class="cmd-text">web-finder start --auto-publish</span>
-      <span class="desc">Recommended: publish detected local web UIs with Tailscale Serve</span>
+      <span class="desc">Recommended: publish detected local web UIs with Tailscale Serve; may prompt on Linux</span>
     </div>
     <div class="cli-row">
       <span class="cmd-text">web-finder stop</span>
@@ -1059,7 +1060,7 @@
 
     <details class="faq-item">
       <summary>Is there a daemon or autostart?</summary>
-      <div class="faq-answer">Yes. Run <code>web-finder start --auto-publish</code> once on each Mac or Linux device for the recommended setup. It starts the local manifest daemon, enables autostart where supported, and lets WebFinder create Tailscale Serve mappings for detected local web UIs. Plain <code>web-finder start</code> remains the passive default and only advertises mappings you already created. macOS uses a LaunchAgent, most Linux systems use a systemd user service, and Synology/non-systemd systems fall back to cron when available.</div>
+      <div class="faq-answer">Yes. Run <code>web-finder start --auto-publish</code> once on each Mac or Linux device for the recommended setup. It starts the local manifest daemon, enables autostart where supported, and lets WebFinder create Tailscale Serve mappings for detected local web UIs. On Linux, auto-publish may prompt to set the current Unix user as the local Tailscale operator; sudo may ask for your password the first time. Plain <code>web-finder start</code> remains the passive default and only advertises mappings you already created. macOS uses a LaunchAgent, most Linux systems use a systemd user service, and Synology/non-systemd systems fall back to cron when available.</div>
     </details>
 
     <details class="faq-item">
