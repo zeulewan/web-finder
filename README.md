@@ -20,7 +20,7 @@ Menubar app for Tailscale users. It shows discovered web services at a glance, o
 
 Discovers services published by WebFinder clients on your tailnet. One-time Tailscale OAuth setup. Install WebFinder on each Mac/Linux device you want to see, then run `web-finder start --auto-publish` there for the recommended setup.
 
-Available on the [App Store](https://apps.apple.com/app/web-finder-for-tailscale/id6759476914) (free).
+[![Download on the App Store](https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg)](https://apps.apple.com/app/web-finder-for-tailscale/id6759476914)
 
 <p>
   <img src="docs/phone-dark.png" alt="Devices" width="200">
@@ -58,8 +58,6 @@ Passive/default mode is still available if you only want to advertise web UIs yo
 web-finder start
 ```
 
-Release and App Store submission notes for maintainers live in [docs/release.md](docs/release.md).
-
 To uninstall from macOS or Linux:
 
 ```bash
@@ -95,12 +93,3 @@ WebFinder for Tailscale is intentionally Tailscale-first:
 Remote services only appear after WebFinder is installed and started on the peer.
 
 `web-finder start` and `web-finder start --auto-publish` both install an autostart entry where supported: a LaunchAgent on macOS, a systemd user service on most Linux systems, or a cron fallback on Synology/non-systemd systems.
-
-## Development
-
-```bash
-npm install --prefix cli
-npm run check
-```
-
-`npm run check` runs ESLint for the CLI, SwiftLint for the macOS/iOS sources, Node syntax checks, and shell syntax checks.

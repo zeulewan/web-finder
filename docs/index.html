@@ -207,6 +207,25 @@
     .dot-green { background: var(--green); box-shadow: 0 0 8px rgba(52,211,153,0.4); }
     .dot-cyan  { background: var(--cyan);  box-shadow: 0 0 8px rgba(34,211,238,0.4); }
 
+    .app-store-badge {
+      display: inline-flex;
+      align-items: center;
+      line-height: 0;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    .app-store-badge:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+    .app-store-badge img {
+      display: block;
+      width: 152px;
+      height: auto;
+    }
+    .install-card .app-store-badge {
+      margin: 0 0 2px;
+    }
+
     /* ---- SHOWCASE (screenshot + terminal) ---- */
     .showcase {
       display: flex;
@@ -771,9 +790,8 @@
       <div class="dot dot-green"></div>
       macOS app + macOS/Linux CLI
     </a>
-    <a class="platform-tag" href="https://apps.apple.com/app/web-finder-for-tailscale/id6759476914" target="_blank" rel="noopener">
-      <div class="dot dot-cyan"></div>
-      iOS - iPhone + iPad app
+    <a class="app-store-badge" href="https://apps.apple.com/app/web-finder-for-tailscale/id6759476914" target="_blank" rel="noopener" aria-label="Download WebFinder on the App Store">
+      <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store">
     </a>
   </div>
 
@@ -874,9 +892,11 @@
         </svg>
         iOS
       </h3>
-      <p class="card-sub">iPhone app - available on the <a href="https://apps.apple.com/app/web-finder-for-tailscale/id6759476914" target="_blank" rel="noopener">App Store</a> (free, open source)</p>
+      <p class="card-sub">iPhone and iPad app. Free and open source.</p>
+      <a class="app-store-badge" href="https://apps.apple.com/app/web-finder-for-tailscale/id6759476914" target="_blank" rel="noopener" aria-label="Download WebFinder on the App Store">
+        <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store">
+      </a>
       <ol class="steps">
-        <li><a href="https://apps.apple.com/app/web-finder-for-tailscale/id6759476914" target="_blank" rel="noopener">Download from the App Store</a></li>
         <li>Create a Tailscale OAuth client with Devices: Read</li>
         <li>Install and run WebFinder on Mac/Linux devices you want to discover</li>
         <li>Paste Client ID and Secret into the app, then pull to refresh</li>
