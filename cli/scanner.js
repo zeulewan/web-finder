@@ -147,8 +147,6 @@ async function fetchService(host, port, { isDarwin = false, showAll = false } = 
 
   // Port open but no <title> (SPA, auth-protected, API endpoint)
   if (openPortUrl) {
-    const t3 = await fetchT3Environment(host, port, schemes);
-    if (t3) return t3;
     const lookup = isDarwin ? { ...KNOWN_SERVICES, ...MAC_ONLY_SERVICES } : KNOWN_SERVICES;
     return { title: lookup[port] ?? `Port ${port}`, url: openPortUrl };
   }
@@ -226,57 +224,6 @@ function fetchWithRedirect(urlStr) {
     });
     req.on('error',   () => done(null));
     req.on('timeout', () => { req.destroy(); done(null); });
-  });
-}
-
-function fetchT3Environment(host, port, schemes) {
-  return new Promise((resolve) => {
-    const candidates = schemes.map(scheme => `${scheme}://${host}:${port}/.well-known/t3/environment`);
-    let idx = 0;
-
-    const tryNext = () => {
-      const urlStr = candidates[idx++];
-      if (!urlStr) { resolve(null); return; }
-
-      const mod = urlStr.startsWith('https') ? https : http;
-      let buf = '';
-      const req = mod.get(urlStr, {
-        timeout: HTTP_TIMEOUT,
-        rejectUnauthorized: false,
-        headers: { 'User-Agent': 'web-finder/1.0' },
-      }, (res) => {
-        if (res.statusCode !== 200) {
-          res.resume();
-          tryNext();
-          return;
-        }
-        res.on('data', (chunk) => {
-          buf += chunk;
-          if (buf.length > READ_LIMIT) req.destroy();
-        });
-        res.on('end', () => {
-          try {
-            const payload = JSON.parse(buf);
-            if (payload?.environmentId && payload?.serverVersion) {
-              const label = typeof payload.label === 'string' && payload.label.trim()
-                ? ` (${payload.label.trim()})`
-                : '';
-              const base = new URL(urlStr);
-              base.pathname = '/';
-              base.search = '';
-              base.hash = '';
-              resolve({ title: `T3${label}`, url: base.toString() });
-              return;
-            }
-          } catch {}
-          tryNext();
-        });
-      });
-      req.on('error', tryNext);
-      req.on('timeout', () => { req.destroy(); tryNext(); });
-    };
-
-    tryNext();
   });
 }
 
