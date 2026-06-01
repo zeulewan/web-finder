@@ -139,7 +139,8 @@ async function fetchService(host, port, { isDarwin = false, showAll = false } = 
     const result = await fetchWithRedirect(url);
     if (!result) continue;  // connection failed, try next scheme
     if (result.redirectPort && result.redirectPort !== port) return null;
-    if (result.title) return { title: result.title, url: result.url || url };
+    if (result.directoryListing && !showAll) return null;
+    if (result.title) return { title: result.title, url: result.url || url, directoryListing: result.directoryListing };
     // Port is open but no title - remember URL for fallback
     if (result.noTitle) openPortUrl = openPortUrl || result.url;
     if (result.responded) openPortUrl = openPortUrl || url;
@@ -177,7 +178,12 @@ function fetchWithRedirect(urlStr) {
       const m = buf.match(/<title[^>]*>([^<]*)<\/title>/i);
       if (m) {
         const title = cleanTitle(decodeEntities(m[1].trim()));
-        done(title ? { title, url: urlStr } : { noTitle: true, url: urlStr });
+        const directoryListing = isDirectoryListingTitle(title) || looksLikeDirectoryListing(buf);
+        done(title ? { title, url: urlStr, directoryListing } : { noTitle: true, url: urlStr, directoryListing });
+        return;
+      }
+      if (looksLikeDirectoryListing(buf)) {
+        done({ title: 'Index of /', url: urlStr, directoryListing: true });
         return;
       }
       const lower = buf.substring(0, 2000).toLowerCase();
@@ -214,8 +220,9 @@ function fetchWithRedirect(urlStr) {
         const m = buf.match(/<title[^>]*>([^<]*)<\/title>/i);
         if (m) {
           const title = cleanTitle(decodeEntities(m[1].trim()));
+          const directoryListing = isDirectoryListingTitle(title) || looksLikeDirectoryListing(buf);
           req.destroy();
-          done(title ? { title, url: urlStr } : { noTitle: true, url: urlStr });
+          done(title ? { title, url: urlStr, directoryListing } : { noTitle: true, url: urlStr, directoryListing });
           return;
         }
         if (buf.length > READ_LIMIT) { req.destroy(); finalize(); }
@@ -225,6 +232,32 @@ function fetchWithRedirect(urlStr) {
     req.on('error',   () => done(null));
     req.on('timeout', () => { req.destroy(); done(null); });
   });
+}
+
+function isDirectoryListingTitle(title = '') {
+  const normalized = String(title).trim().replace(/\s+/g, ' ');
+  return /^Index of(?:\s+\/.*)?$/i.test(normalized) ||
+         /^Directory listing for\s+\/.*$/i.test(normalized);
+}
+
+function looksLikeDirectoryListing(html = '') {
+  const sample = String(html).slice(0, READ_LIMIT);
+  const lower = sample.toLowerCase();
+  let score = 0;
+
+  if (/<title[^>]*>\s*index of\s+\//i.test(sample)) score += 3;
+  if (/index of\s+\//i.test(sample)) score += 1;
+  if (lower.includes('parent directory')) score += 2;
+  if (/<a\s+href=["']\.\.\/?["']/i.test(sample)) score += 2;
+  if (/(last modified|name|size|description)\s*<\/a>/i.test(sample)) score += 1;
+  if (/<table[^>]*>[\s\S]{0,4000}<a\s+href=/i.test(sample)) score += 1;
+  if (/nginx|apache|lighttpd|uhttpd/i.test(sample) && lower.includes('index of')) score += 1;
+
+  return score >= 3;
+}
+
+function isDirectoryListingService(service) {
+  return Boolean(service?.directoryListing) || isDirectoryListingTitle(service?.title);
 }
 
 function cleanTitle(str) {
@@ -304,7 +337,7 @@ async function scanLocal({ showAll = false } = {}) {
     const isDarwin = process.platform === 'darwin';
     const svc = await fetchService('127.0.0.1', port, { isDarwin, showAll });
     if (!svc) return null;
-    return { title: svc.title, host: '127.0.0.1', port, url: svc.url };
+    return { title: svc.title, host: '127.0.0.1', port, url: svc.url, directoryListing: svc.directoryListing };
   }));
 
   let result = dedup(services.filter(Boolean));
@@ -321,7 +354,7 @@ async function scanLocal({ showAll = false } = {}) {
 
 // ---- gateway scan -----------------------------------------------------------
 
-async function scanGateway(_options = {}) {
+async function scanGateway({ showAll = false } = {}) {
   const routeOut = process.platform === 'darwin'
     ? await execPromise('route -n get default 2>/dev/null')
     : await execPromise('ip route show default 2>/dev/null');
@@ -346,10 +379,11 @@ async function scanGateway(_options = {}) {
     const svc = await fetchService(ip, port, { showAll: true });
     if (!svc) return null;
     const title = svc.title.startsWith('Port ') ? 'Admin Page' : svc.title;
-    return { title, host: ip, port, url: svc.url };
+    return { title, host: ip, port, url: svc.url, directoryListing: svc.directoryListing };
   }));
 
-  const found = dedup(services.filter(Boolean));
+  const found = dedup(services.filter(Boolean))
+    .filter(s => showAll || !isDirectoryListingService(s));
   if (found.length === 0) return null;
   // Detect hardware model (e.g. "UniFi Express") then fall back to ISP, page title, etc.
   const model = await detectUnifiModel(ip);
@@ -470,7 +504,7 @@ async function scanTailscale({ showAll = false } = {}) {
               url = u.toString();
             }
           } catch {}
-          return { title: s.name || `Port ${s.port}`, port: s.port, url };
+          return { title: s.name || `Port ${s.port}`, port: s.port, url, directoryListing: s.directoryListing };
         })
       : [];
 
@@ -479,6 +513,7 @@ async function scanTailscale({ showAll = false } = {}) {
       result = result.filter(s => {
         if (NON_WEB_PORTS.has(s.port)) return false;
         if (isDarwin && DARWIN_NON_WEB_PORTS.has(s.port)) return false;
+        if (isDirectoryListingService(s)) return false;
         return true;
       });
     }
@@ -587,7 +622,7 @@ async function scanLocalSS({ showAll = false, tailnetOnly = false } = {}) {
       } catch {}
     }
 
-    return { title, host: '127.0.0.1', port: (tailnetOnly && extPort) ? extPort : port, url };
+    return { title, host: '127.0.0.1', port: (tailnetOnly && extPort) ? extPort : port, url, directoryListing: svc.directoryListing };
   }));
 
   let result = dedup(services.filter(Boolean))
@@ -605,6 +640,7 @@ async function scanLocalSS({ showAll = false, tailnetOnly = false } = {}) {
   if (!showAll) {
     result = result.filter(s => {
       if (NON_WEB_PORTS.has(s.port)) return false;
+      if (isDirectoryListingService(s)) return false;
       // Exclude generic "Port N" fallbacks — no real web UI, just an open port
       if (s.title === `Port ${s.port}`) return false;
       return true;
@@ -673,7 +709,8 @@ async function getTailscaleServeMap() {
       continue;
     }
     // Match: |-- / proxy http://localhost:PORT
-    const proxyM = line.match(/proxy\s+https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)/);
+    // Also handle HTTPS backends served as https+insecure://127.0.0.1:PORT.
+    const proxyM = line.match(/proxy\s+https?(?:\+insecure)?:\/\/(?:localhost|127\.0\.0\.1):(\d+)/);
     if (proxyM && extPort !== null) {
       map.set(parseInt(proxyM[1]), extPort);
       extPort = null;
@@ -702,7 +739,7 @@ async function scanTailscaleServedLocal({ showAll = false } = {}) {
       url = `https://127.0.0.1:${externalPort}`;
     }
 
-    return { title: svc.title, host: '127.0.0.1', port: externalPort, localPort, url };
+    return { title: svc.title, host: '127.0.0.1', port: externalPort, localPort, url, directoryListing: svc.directoryListing };
   }));
 
   let result = dedup(services.filter(Boolean));
@@ -711,6 +748,7 @@ async function scanTailscaleServedLocal({ showAll = false } = {}) {
     result = result.filter(s => {
       if (NON_WEB_PORTS.has(s.localPort) || NON_WEB_PORTS.has(s.port)) return false;
       if (isDarwin && (DARWIN_NON_WEB_PORTS.has(s.localPort) || DARWIN_NON_WEB_PORTS.has(s.port))) return false;
+      if (isDirectoryListingService(s)) return false;
       if (s.title === `Port ${s.localPort}` || s.title === `Port ${s.port}`) return false;
       return true;
     });

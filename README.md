@@ -92,4 +92,4 @@ WebFinder for Tailscale is intentionally Tailscale-first:
 
 Remote services only appear after WebFinder is installed and started on the peer.
 
-`web-finder start` and `web-finder start --auto-publish` both install an autostart entry where supported: a LaunchAgent on macOS, a systemd user service on most Linux systems, or a cron fallback on Synology/non-systemd systems.
+`web-finder start` and `web-finder start --auto-publish` both install an autostart entry where supported: a LaunchAgent on macOS, a systemd user service on most Linux systems, a procd service on OpenWrt, or a cron fallback on other non-systemd systems.

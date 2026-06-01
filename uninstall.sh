@@ -13,6 +13,18 @@ info()  { echo -e "${GREEN}==> ${NC}$1"; }
 warn()  { echo -e "${YELLOW}==> ${NC}$1"; }
 error() { echo -e "${RED}Error: $1${NC}"; exit 1; }
 
+run_root() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    elif command -v sudo &>/dev/null; then
+        sudo "$@"
+    elif command -v doas &>/dev/null; then
+        doas "$@"
+    else
+        return 1
+    fi
+}
+
 disable_launchagent() {
     local plist="$HOME/Library/LaunchAgents/com.zeul.web-finder-serve.plist"
 
@@ -40,6 +52,19 @@ disable_systemd_user_service() {
             systemctl --user daemon-reload 2>/dev/null || true
         fi
         info "Removed systemd user service"
+    fi
+}
+
+disable_procd_service() {
+    local init="/etc/init.d/web-finder"
+    [ -f "$init" ] || return 0
+
+    run_root "$init" stop 2>/dev/null || true
+    run_root "$init" disable 2>/dev/null || true
+    if run_root rm -f "$init" 2>/dev/null; then
+        info "Removed OpenWrt procd service"
+    else
+        warn "Could not remove $init; rerun uninstall as root"
     fi
 }
 
@@ -111,6 +136,7 @@ remove_cli_symlink() {
 cleanup_autostart() {
     disable_launchagent
     disable_systemd_user_service
+    disable_procd_service
     disable_cron_autostart
     stop_pidfile_process
     disable_tailscale_manifest_serve

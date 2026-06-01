@@ -412,7 +412,7 @@ enum Scanner {
     // MARK: - Manifest
 
     /// Fetch the web-finder manifest from a peer. Returns parsed services on success, nil if unavailable.
-    static func fetchManifest(ip: String, dnsName: String) async -> [WebService]? {
+    static func fetchManifest(ip: String, dnsName: String, showAll: Bool = false) async -> [WebService]? {
         let candidates = [
             ("https", dnsName),
             ("http", dnsName),
@@ -437,6 +437,7 @@ enum Scanner {
                           let port = svc["port"] as? Int,
                           let urlStr = svc["url"] as? String,
                           let origURL = URL(string: urlStr) else { return nil }
+                    if !showAll && isDirectoryListingTitle(name) { return nil }
                     let scheme = origURL.scheme ?? "http"
                     // HTTPS services need the DNS name (TLS certs are issued for .ts.net)
                     let host = scheme == "https" ? dnsName : ip
@@ -449,6 +450,14 @@ enum Scanner {
             }
         }
         return nil
+    }
+
+    static func isDirectoryListingTitle(_ title: String) -> Bool {
+        let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        let options: String.CompareOptions = [.regularExpression, .caseInsensitive]
+        return normalized.range(of: #"^Index of(?:\s+/.*)?$"#, options: options) != nil ||
+               normalized.range(of: #"^Directory listing for\s+/.*$"#, options: options) != nil
     }
 
     // MARK: - Tailscale
@@ -496,7 +505,7 @@ enum Scanner {
                                       os: peer.os, online: false, services: [])
                     }
                     // Use manifest — peers without web-finder serve show no services
-                    let manifestServices = await fetchManifest(ip: peer.ip, dnsName: peer.dnsName) ?? []
+                    let manifestServices = await fetchManifest(ip: peer.ip, dnsName: peer.dnsName, showAll: showAll) ?? []
                     return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
                                   os: peer.os, online: true, services: manifestServices)
                 }

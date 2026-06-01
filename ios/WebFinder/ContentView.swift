@@ -74,15 +74,17 @@ class ScannerModel: ObservableObject {
     }
 
     private var scanTask: Task<Void, Never>?
+    private var showingCurrentScanResults = false
 
     func scan() {
         if demoMode { return }
         // Cancel any in-progress scan before starting a new one
         scanTask?.cancel()
         Scanner.cancelScan()
+        let previousDevices = devices
         scanning = true
         scanProgress = 0
-        devices = []
+        showingCurrentScanResults = false
         scanError = nil
         ScanLog.shared.clear()
         scanTask = Task {
@@ -90,17 +92,24 @@ class ScannerModel: ObservableObject {
                 Task { @MainActor in self.scanProgress = progress }
             }, onDevice: { device in
                 Task { @MainActor in
+                    if !self.showingCurrentScanResults {
+                        self.devices = []
+                        self.showingCurrentScanResults = true
+                    }
                     self.devices.append(device)
                     self.sortDevices()
                 }
             })
             // Final consistent state
-            self.devices = result
             self.scanError = error
+            if error == nil || !result.isEmpty {
+                let finalResult = Self.preserveServicesForTransientMisses(result, previous: previousDevices)
+                self.devices = finalResult
+                Self.saveCache(finalResult)
+            }
             self.lastScan = Date()
             self.scanProgress = 1
             self.scanning = false
-            Self.saveCache(result)
         }
     }
 
@@ -127,6 +136,26 @@ class ScannerModel: ObservableObject {
         guard let data = UserDefaults.standard.data(forKey: cacheKey),
               let devices = try? JSONDecoder().decode([Device].self, from: data) else { return [] }
         return devices
+    }
+
+    private static func preserveServicesForTransientMisses(_ devices: [Device], previous: [Device]) -> [Device] {
+        let previousByKey = Dictionary(
+            previous.map { ("\($0.name)|\($0.ip)", $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return devices.map { device in
+            guard device.manifestUnavailable,
+                  device.online,
+                  device.services.isEmpty,
+                  let prior = previousByKey["\(device.name)|\(device.ip)"],
+                  !prior.services.isEmpty else {
+                return device
+            }
+
+            var preserved = device
+            preserved.services = prior.services
+            return preserved
+        }
     }
 }
 
@@ -214,7 +243,9 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 24)
                 }
-            } else if model.devices.isEmpty && !model.scanning {
+            }
+
+            if model.devices.isEmpty && !model.scanning {
                 Section {
                     VStack(spacing: 8) {
                         Image(systemName: "network.slash")

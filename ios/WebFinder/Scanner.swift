@@ -24,14 +24,16 @@ struct Device: Identifiable, Codable {
     let os: String?
     let online: Bool
     var services: [WebService]
+    var manifestUnavailable: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case name, ip, isLocal, isGateway, os, online, services
     }
 
-    init(name: String, ip: String, isLocal: Bool, isGateway: Bool = false, os: String?, online: Bool, services: [WebService]) {
+    init(name: String, ip: String, isLocal: Bool, isGateway: Bool = false, os: String?, online: Bool, services: [WebService], manifestUnavailable: Bool = false) {
         self.name = name; self.ip = ip; self.isLocal = isLocal; self.isGateway = isGateway
         self.os = os; self.online = online; self.services = services
+        self.manifestUnavailable = manifestUnavailable
     }
 
     static func isMacOS(_ os: String?) -> Bool {
@@ -218,12 +220,13 @@ enum Scanner {
                                       os: peer.os, online: false, services: [])
                     }
                     dlog("fetching manifest from \(peer.name) (\(peer.ip))...")
-                    let services = await fetchManifest(ip: peer.ip, dnsName: peer.dnsName)
+                    let services = await fetchManifest(ip: peer.ip, dnsName: peer.dnsName, showAll: showAll)
                     let finalServices = services ?? []
                     let online = peer.apiOnline || services != nil
                     dlog("  \(peer.name): \(finalServices.count) services from manifest, online=\(online)")
                     return Device(name: peer.name, ip: peer.dnsName, isLocal: false,
-                                  os: peer.os, online: online, services: finalServices)
+                                  os: peer.os, online: online, services: finalServices,
+                                  manifestUnavailable: services == nil)
                 }
                 return true
             }
@@ -265,7 +268,7 @@ enum Scanner {
     // MARK: - Manifest
 
     /// Fetch the web-finder manifest from a peer. Returns parsed services on success, nil if unavailable.
-    static func fetchManifest(ip: String, dnsName: String) async -> [WebService]? {
+    static func fetchManifest(ip: String, dnsName: String, showAll: Bool = false) async -> [WebService]? {
         let candidates = [
             ("https", dnsName),
             ("http", dnsName),
@@ -275,43 +278,61 @@ enum Scanner {
             let exists = result.contains { "\($0.0)://\($0.1)" == key }
             if !candidate.1.isEmpty && !exists { result.append(candidate) }
         }
+
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 1.5
-        config.timeoutIntervalForResource = 2.0
+        config.timeoutIntervalForRequest = 2.5
+        config.timeoutIntervalForResource = 4.0
+        config.httpMaximumConnectionsPerHost = 2
         config.waitsForConnectivity = false
         let session = URLSession(configuration: config, delegate: InsecureTLSDelegate.shared, delegateQueue: nil)
-        for (scheme, manifestHost) in candidates {
-            guard let url = URL(string: "\(scheme)://\(manifestHost):\(MANIFEST_PORT)\(MANIFEST_PATH)") else { continue }
-            do {
-                var req = URLRequest(url: url)
-                req.timeoutInterval = 1.5
-                let (data, response) = try await session.data(for: req)
-                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
-                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let svcs = json["services"] as? [[String: Any]] else { continue }
-                return svcs.compactMap { svc -> WebService? in
-                    guard let name = svc["name"] as? String,
-                          let port = svc["port"] as? Int,
-                          let urlStr = svc["url"] as? String,
-                          let origURL = URL(string: urlStr) else { return nil }
-                    let scheme = origURL.scheme ?? "http"
-                    // HTTPS services need the DNS name (TLS certs are issued for .ts.net)
-                    let host = scheme == "https" ? dnsName : ip
-                    let path = origURL.path.isEmpty || origURL.path == "/" ? "" : origURL.path
-                    guard let svcURL = URL(string: "\(scheme)://\(host):\(port)\(path)") else { return nil }
-                    return WebService(title: name, port: port, url: svcURL, isHTTPS: scheme == "https")
+        defer { session.finishTasksAndInvalidate() }
+
+        for attempt in 0..<2 {
+            for (scheme, manifestHost) in candidates {
+                guard let url = URL(string: "\(scheme)://\(manifestHost):\(MANIFEST_PORT)\(MANIFEST_PATH)") else { continue }
+                do {
+                    var req = URLRequest(url: url)
+                    req.timeoutInterval = attempt == 0 ? 2.5 : 4.0
+                    let (data, response) = try await session.data(for: req)
+                    guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
+                    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let svcs = json["services"] as? [[String: Any]] else { continue }
+                    return svcs.compactMap { svc -> WebService? in
+                        guard let name = svc["name"] as? String,
+                              let port = svc["port"] as? Int,
+                              let urlStr = svc["url"] as? String,
+                              let origURL = URL(string: urlStr) else { return nil }
+                        if !showAll && isDirectoryListingTitle(name) { return nil }
+                        let scheme = origURL.scheme ?? "http"
+                        // HTTPS services need the DNS name (TLS certs are issued for .ts.net)
+                        let host = scheme == "https" ? dnsName : ip
+                        let path = origURL.path.isEmpty || origURL.path == "/" ? "" : origURL.path
+                        guard let svcURL = URL(string: "\(scheme)://\(host):\(port)\(path)") else { return nil }
+                        return WebService(title: name, port: port, url: svcURL, isHTTPS: scheme == "https")
+                    }
+                } catch {
+                    continue
                 }
-            } catch {
-                continue
             }
+            try? await Task.sleep(nanoseconds: UInt64(250_000_000 * (attempt + 1)))
         }
         return nil
     }
 
+    static func isDirectoryListingTitle(_ title: String) -> Bool {
+        let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        let options: String.CompareOptions = [.regularExpression, .caseInsensitive]
+        return normalized.range(of: #"^Index of(?:\s+/.*)?$"#, options: options) != nil ||
+               normalized.range(of: #"^Directory listing for\s+/.*$"#, options: options) != nil
+    }
+
     // MARK: - Tailscale OAuth API
 
-    static func getAccessToken(clientID: String, clientSecret: String) async -> String? {
-        guard let url = URL(string: "https://api.tailscale.com/api/v2/oauth/token") else { return nil }
+    static func getAccessToken(clientID: String, clientSecret: String) async -> (token: String?, error: String?) {
+        guard let url = URL(string: "https://api.tailscale.com/api/v2/oauth/token") else {
+            return (nil, "Invalid OAuth URL")
+        }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.timeoutInterval = 10.0
@@ -321,13 +342,25 @@ enum Scanner {
         req.setValue("Basic \(cred)", forHTTPHeaderField: "Authorization")
         req.httpBody = Data("grant_type=client_credentials".utf8)
 
-        guard let (data, response) = try? await URLSession.shared.data(for: req),
-              let http = response as? HTTPURLResponse, http.statusCode == 200,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let token = json["access_token"] as? String else {
-            return nil
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse else {
+                return (nil, "No HTTP response from Tailscale OAuth")
+            }
+            if http.statusCode == 401 || http.statusCode == 403 {
+                return (nil, "INVALID_CREDENTIALS")
+            }
+            if http.statusCode != 200 {
+                return (nil, "Tailscale OAuth error: HTTP \(http.statusCode)")
+            }
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let token = json["access_token"] as? String else {
+                return (nil, "Could not decode Tailscale OAuth response")
+            }
+            return (token, nil)
+        } catch {
+            return (nil, "Could not reach Tailscale: \(error.localizedDescription)")
         }
-        return token
     }
 
     static func tailscaleStatus() async -> (String?, String?) {
@@ -338,8 +371,9 @@ enum Scanner {
             return (nil, "NO_CREDENTIALS")
         }
 
-        guard let token = await getAccessToken(clientID: clientID, clientSecret: clientSecret) else {
-            return (nil, "INVALID_CREDENTIALS")
+        let auth = await getAccessToken(clientID: clientID, clientSecret: clientSecret)
+        guard let token = auth.token else {
+            return (nil, auth.error ?? "Could not reach Tailscale")
         }
 
         guard let url = URL(string: "https://api.tailscale.com/api/v2/tailnet/-/devices") else {

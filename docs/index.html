@@ -1080,7 +1080,7 @@
 
     <details class="faq-item">
       <summary>Is there a daemon or autostart?</summary>
-      <div class="faq-answer">Yes. Run <code>web-finder start --auto-publish</code> once on each Mac or Linux device for the recommended setup. It starts the local manifest daemon, enables autostart where supported, and lets WebFinder create Tailscale Serve mappings for detected local web UIs. On Linux, auto-publish may prompt to set the current Unix user as the local Tailscale operator; sudo may ask for your password the first time. Plain <code>web-finder start</code> remains the passive default and only advertises mappings you already created. macOS uses a LaunchAgent, most Linux systems use a systemd user service, and Synology/non-systemd systems fall back to cron when available.</div>
+      <div class="faq-answer">Yes. Run <code>web-finder start --auto-publish</code> once on each Mac or Linux device for the recommended setup. It starts the local manifest daemon, enables autostart where supported, and lets WebFinder create Tailscale Serve mappings for detected local web UIs. On Linux, auto-publish may prompt to set the current Unix user as the local Tailscale operator; sudo may ask for your password the first time. Plain <code>web-finder start</code> remains the passive default and only advertises mappings you already created. macOS uses a LaunchAgent, most Linux systems use a systemd user service, OpenWrt uses procd, and other non-systemd systems fall back to cron when available.</div>
     </details>
 
     <details class="faq-item">
