@@ -540,8 +540,20 @@ function setupTailscaleServe({ autoPublish = false } = {}) {
 async function syncTailscaleServeServices({ showAll = false } = {}) {
   const existingServeMap = await getTailscaleServeMap();
   const services = await scanLocalSS({ showAll });
+  const desiredPorts = new Set(services
+    .map(service => service.port)
+    .filter(port => port && port !== MANIFEST_PORT));
+  const activeAutoPublishedPorts = [];
   let count = 0;
   const autoPublishedPorts = readAutoPublishedPorts();
+  for (const port of autoPublishedPorts) {
+    if (desiredPorts.has(port)) {
+      activeAutoPublishedPorts.push(port);
+      continue;
+    }
+    try { execTailscale(`serve --https=${port} off`); } catch {}
+    try { execTailscale(`serve --http=${port} off`); } catch {}
+  }
   for (const service of services) {
     if (!service.port || service.port === MANIFEST_PORT) continue;
     if (existingServeMap.has(service.port)) continue;
@@ -555,13 +567,13 @@ async function syncTailscaleServeServices({ showAll = false } = {}) {
     }
     try {
       execTailscale(`serve --bg --https=${service.port} ${quoteShell(target)}`);
-      autoPublishedPorts.push(service.port);
+      activeAutoPublishedPorts.push(service.port);
       count += 1;
     } catch (e) {
       console.error(`Tailscale Serve setup skipped for ${service.title || `:${service.port}`}: ${e.message}`);
     }
   }
-  writeAutoPublishedPorts(autoPublishedPorts);
+  writeAutoPublishedPorts(activeAutoPublishedPorts);
   if (count > 0) console.log(`Tailscale Serve enabled for ${count} local service(s).`);
   return count;
 }
