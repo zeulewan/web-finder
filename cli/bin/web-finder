@@ -665,7 +665,8 @@ start_service() {
 `;
       writeFileAsRoot(info.init, script);
       runAsRoot(`${quoteShell(info.init)} enable`);
-      runAsRoot(`${quoteShell(info.init)} restart`);
+      runAsRoot(`${quoteShell(info.init)} stop >/dev/null 2>&1 || true`);
+      runAsRoot(`${quoteShell(info.init)} start`);
       console.log('Autostart enabled (procd).');
     } else {
       const unit = `[Unit]
