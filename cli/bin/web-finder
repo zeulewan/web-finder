@@ -307,6 +307,42 @@ function quoteRcArg(str) {
   return `'${String(str).replace(/'/g, "'\\''")}'`;
 }
 
+function pidfileStatus(pidfile) {
+  const installed = fs.existsSync(pidfile);
+  const pid = installed ? fs.readFileSync(pidfile, 'utf8').trim() : null;
+  if (pid) {
+    try {
+      execSync(`kill -0 ${pid}`, { encoding: 'utf8' });
+      return { installed: true, active: true, pid };
+    } catch {}
+  }
+  return { installed, active: false, pid: null };
+}
+
+function stopPidfileProcess(pidfile) {
+  if (!fs.existsSync(pidfile)) return;
+  const pid = fs.readFileSync(pidfile, 'utf8').trim();
+  if (pid) {
+    try { execSync(`kill ${pid}`, { encoding: 'utf8' }); } catch {}
+  }
+  fs.unlinkSync(pidfile);
+}
+
+function removeCronAutostartMarker() {
+  const marker = '# web-finder-serve';
+  if (!hasCommand('crontab')) return;
+  let existing = '';
+  try { existing = execSync('crontab -l 2>/dev/null', { encoding: 'utf8' }); } catch {}
+  const next = existing
+    .split('\n')
+    .filter(line => line.trim() && !line.includes(marker))
+    .join('\n');
+  const tmp = path.join(os.tmpdir(), `web-finder-cron-${process.pid}`);
+  fs.writeFileSync(tmp, next ? `${next}\n` : '');
+  execSync(`crontab ${quoteShell(tmp)}`, { encoding: 'utf8' });
+  fs.unlinkSync(tmp);
+}
+
 function versionString() {
   let commit = '';
   try {
@@ -331,14 +367,7 @@ function serviceStatus() {
   }
 
   if (info.type === 'cron') {
-    const pid = fs.existsSync(info.pidfile) ? fs.readFileSync(info.pidfile, 'utf8').trim() : null;
-    if (pid) {
-      try {
-        execSync(`kill -0 ${pid}`, { encoding: 'utf8' });
-        return { installed: true, active: true, pid };
-      } catch {}
-    }
-    return { installed: fs.existsSync(info.pidfile), active: false, pid: null };
+    return pidfileStatus(info.pidfile);
   }
 
   if (info.type === 'procd') {
@@ -353,7 +382,9 @@ function serviceStatus() {
         active = !/not running|inactive|stopped/i.test(out);
       } catch {}
     }
-    return { installed, active, pid: null };
+    if (active) return { installed: true, active: true, pid: null };
+    const legacy = pidfileStatus(info.pidfile);
+    return { installed: installed || legacy.installed, active: legacy.active, pid: legacy.pid };
   }
 
   try {
@@ -474,6 +505,7 @@ function getAutostartInfo() {
     return {
       type: 'procd',
       init: '/etc/init.d/web-finder',
+      pidfile: path.join(os.homedir(), '.web-finder-serve.pid'),
       nodeCommand, binPath,
     };
   }
@@ -613,6 +645,8 @@ function setupAutostart({ autoPublish = false } = {}) {
       execSync(startCmd, { encoding: 'utf8' });
       console.log('Manifest server started.');
     } else if (info.type === 'procd') {
+      removeCronAutostartMarker();
+      stopPidfileProcess(info.pidfile);
       const commandArgs = info.nodeCommand.concat([info.binPath], serveArgs);
       const rcCommand = commandArgs.map(quoteRcArg).join(' ');
       const script = `#!/bin/sh /etc/rc.common
@@ -670,28 +704,12 @@ function removeAutostart() {
         console.log('Autostart was not enabled.');
       }
     } else if (info.type === 'cron') {
-      const marker = '# web-finder-serve';
-      if (hasCommand('crontab')) {
-        let existing = '';
-        try { existing = execSync('crontab -l 2>/dev/null', { encoding: 'utf8' }); } catch {}
-        const next = existing
-          .split('\n')
-          .filter(line => line.trim() && !line.includes(marker))
-          .join('\n');
-        const tmp = path.join(os.tmpdir(), `web-finder-cron-${process.pid}`);
-        fs.writeFileSync(tmp, next ? `${next}\n` : '');
-        execSync(`crontab ${quoteShell(tmp)}`, { encoding: 'utf8' });
-        fs.unlinkSync(tmp);
-      }
-      if (fs.existsSync(info.pidfile)) {
-        const pid = fs.readFileSync(info.pidfile, 'utf8').trim();
-        if (pid) {
-          try { execSync(`kill ${pid}`, { encoding: 'utf8' }); } catch {}
-        }
-        fs.unlinkSync(info.pidfile);
-      }
+      removeCronAutostartMarker();
+      stopPidfileProcess(info.pidfile);
       console.log('Autostart disabled.');
     } else if (info.type === 'procd') {
+      removeCronAutostartMarker();
+      stopPidfileProcess(info.pidfile);
       if (fs.existsSync(info.init)) {
         try { runAsRoot(`${quoteShell(info.init)} stop`); } catch {}
         try { runAsRoot(`${quoteShell(info.init)} disable`); } catch {}
