@@ -79,5 +79,7 @@ jobs:
           set -euo pipefail
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' ios/WebFinder/Info.plist)"
           BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' ios/WebFinder/Info.plist)"
-          python3 -m pip install cryptography
-          python3 scripts/submit-ios-appstore.py "$VERSION" --build-number "$BUILD" --whats-new "Fixes offline and refresh behavior in the iOS app, improves manifest discovery stability, and filters generic directory listing pages from normal results."
+          python3 -m venv "$RUNNER_TEMP/submit-venv"
+          source "$RUNNER_TEMP/submit-venv/bin/activate"
+          python -m pip install cryptography
+          python scripts/submit-ios-appstore.py "$VERSION" --build-number "$BUILD" --whats-new "Fixes offline and refresh behavior in the iOS app, improves manifest discovery stability, and filters generic directory listing pages from normal results."

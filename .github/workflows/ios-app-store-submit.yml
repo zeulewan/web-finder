@@ -1,0 +1,47 @@
+name: iOS App Store Submit
+
+on:
+  workflow_dispatch:
+
+jobs:
+  submit:
+    name: Submit Uploaded Build
+    runs-on: macos-26
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Write App Store Connect key
+        env:
+          APP_STORE_CONNECT_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APP_STORE_CONNECT_KEY_CONTENT}" ]]; then
+            echo "Missing APP_STORE_CONNECT_KEY_CONTENT secret" >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/app-store-connect"
+          printf '%s' "$APP_STORE_CONNECT_KEY_CONTENT" > "$RUNNER_TEMP/app-store-connect/AuthKey.p8"
+
+      - name: Submit App Store version for review
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_PATH: ${{ runner.temp }}/app-store-connect/AuthKey.p8
+        run: |
+          set -euo pipefail
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' ios/WebFinder/Info.plist)"
+          BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' ios/WebFinder/Info.plist)"
+          python3 -m venv "$RUNNER_TEMP/submit-venv"
+          source "$RUNNER_TEMP/submit-venv/bin/activate"
+          python -m pip install cryptography
+          for attempt in 1 2 3 4 5; do
+            if python scripts/submit-ios-appstore.py "$VERSION" --build-number "$BUILD" --whats-new "Fixes offline and refresh behavior in the iOS app, improves manifest discovery stability, and filters generic directory listing pages from normal results."; then
+              exit 0
+            fi
+            echo "Submit attempt $attempt failed; waiting for App Store Connect build processing..."
+            sleep 60
+          done
+          python scripts/submit-ios-appstore.py "$VERSION" --build-number "$BUILD" --whats-new "Fixes offline and refresh behavior in the iOS app, improves manifest discovery stability, and filters generic directory listing pages from normal results."
