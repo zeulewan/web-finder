@@ -163,6 +163,7 @@ enum Scanner {
         "/usr/local/bin/web-finder",
         "/opt/homebrew/bin/web-finder",
     ]
+    static let processPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
     static func scanUsingCLI(showAll: Bool, onProgress: (@Sendable (Double) -> Void)?) async -> [Device]? {
         guard let cli = cliPaths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
@@ -239,6 +240,7 @@ enum Scanner {
             let stdout = Pipe()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments
+            process.environment = ProcessInfo.processInfo.environment.merging(["PATH": processPath]) { _, new in new }
             process.standardOutput = stdout
             process.standardError = Pipe()
 
