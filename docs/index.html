@@ -298,6 +298,10 @@
     .out  { color: var(--text); }
     .dim  { color: var(--text-faint); }
     .url  { color: var(--cyan); }
+    .terminal-body .url {
+      overflow-wrap: anywhere;
+      word-break: break-all;
+    }
     .dot-out { color: var(--green); }
 
     /* ---- SECTIONS ---- */
@@ -325,7 +329,7 @@
     /* ---- INSTALL ---- */
     .install-grid {
       display: grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
       gap: 18px;
     }
 
@@ -334,6 +338,7 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 26px;
+      min-width: 0;
       transition: border-color 0.3s, box-shadow 0.3s;
     }
     .install-card:hover {
@@ -363,16 +368,20 @@
       font-size: 12px;
       color: var(--cyan);
       position: relative;
+      min-width: 0;
     }
     .code-block code {
       display: block;
       word-break: break-all;
+      overflow-wrap: anywhere;
       line-height: 1.6;
       padding-right: 52px;
+      min-width: 0;
     }
     .prompt-block code {
       white-space: pre-wrap;
       word-break: normal;
+      overflow-wrap: anywhere;
     }
     .copy-btn {
       position: absolute;
@@ -408,6 +417,7 @@
       font-size: 13px;
       color: var(--text-dim);
       line-height: 1.5;
+      min-width: 0;
     }
     .steps li::before {
       content: counter(steps);
@@ -430,7 +440,8 @@
       background: var(--border);
       padding: 1px 6px;
       border-radius: 4px;
-      white-space: nowrap;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
 
     /* ---- FEATURES ---- */
@@ -661,6 +672,9 @@
     @media (max-width: 480px) {
       .setup-dropdown .phone-gallery {
         gap: 16px;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
         overflow-x: auto;
         justify-content: flex-start;
         padding: 0 20px 12px;
@@ -710,6 +724,11 @@
     .setup-dropdown {
       margin-top: 16px;
       text-align: center;
+      max-width: 100%;
+      min-width: 0;
+    }
+    .setup-dropdown:not([open]) > :not(summary) {
+      display: none;
     }
     .setup-dropdown summary {
       display: inline-flex;
@@ -759,6 +778,12 @@
       nav { padding: 12px 16px; }
       .showcase { gap: 32px; }
       .terminal-body { padding: 14px 16px; font-size: 11.5px; }
+      .install-card { padding: 20px; }
+      .copy-btn {
+        min-height: 32px;
+        padding: 6px 10px;
+      }
+      .code-block code { padding-right: 58px; }
       h2 { font-size: 24px; }
     }
   </style>
