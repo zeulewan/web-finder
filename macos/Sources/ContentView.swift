@@ -9,6 +9,8 @@ class ScannerModel: ObservableObject {
     @Published var scanProgress: Double = 0
     @Published var lastScan: Date?
     @Published var tailscaleWarning: String?
+    private var queuedScan = false
+    private var retryTask: Task<Void, Never>?
     @Published var showAllPorts = false {
         didSet { UserDefaults.standard.set(showAllPorts, forKey: "showAllPorts") }
     }
@@ -29,10 +31,16 @@ class ScannerModel: ObservableObject {
         }
     }
 
-    func scan() {
-        guard !scanning else { return }
+    func scan(retryAttempts: Int = 2) {
+        if scanning {
+            queuedScan = true
+            return
+        }
+        retryTask?.cancel()
+        retryTask = nil
         scanning = true
         scanProgress = 0
+        tailscaleWarning = nil
         Task {
             let result = await Scanner.scanAll(showAll: showAllPorts) { progress in
                 Task { @MainActor in self.scanProgress = progress }
@@ -42,6 +50,24 @@ class ScannerModel: ObservableObject {
             self.lastScan = Date()
             self.scanProgress = 1
             self.scanning = false
+            if self.queuedScan {
+                self.queuedScan = false
+                self.scan(retryAttempts: retryAttempts)
+            } else if result.tailscaleWarning != nil && retryAttempts > 0 {
+                self.scheduleRetry(retryAttempts: retryAttempts - 1)
+            }
+        }
+    }
+
+    private func scheduleRetry(retryAttempts: Int) {
+        retryTask?.cancel()
+        retryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self, !self.scanning, self.tailscaleWarning != nil else { return }
+                self.scan(retryAttempts: retryAttempts)
+            }
         }
     }
 }
