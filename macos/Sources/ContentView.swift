@@ -8,6 +8,7 @@ class ScannerModel: ObservableObject {
     @Published var scanning = false
     @Published var scanProgress: Double = 0
     @Published var lastScan: Date?
+    @Published var tailscaleWarning: String?
     @Published var showAllPorts = false {
         didSet { UserDefaults.standard.set(showAllPorts, forKey: "showAllPorts") }
     }
@@ -36,7 +37,8 @@ class ScannerModel: ObservableObject {
             let result = await Scanner.scanAll(showAll: showAllPorts) { progress in
                 Task { @MainActor in self.scanProgress = progress }
             }
-            self.devices = result
+            self.devices = result.devices
+            self.tailscaleWarning = result.tailscaleWarning
             self.lastScan = Date()
             self.scanProgress = 1
             self.scanning = false
@@ -166,14 +168,21 @@ struct ContentView: View {
 
     var scrollContent: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            if model.devices.isEmpty && !model.scanning {
-                Text("No devices found")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .padding(16)
-            } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    let visible = model.showAllDevices ? model.devices : activeDevices
+            VStack(alignment: .leading, spacing: 0) {
+                if let warning = model.tailscaleWarning {
+                    TailscaleWarningView(message: warning)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                }
+
+                let visible = model.showAllDevices ? model.devices : activeDevices
+                if visible.isEmpty && !model.scanning {
+                    Text(model.tailscaleWarning == nil ? "No devices found" : "No web services found")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
                     ForEach(visible) { device in
                         DeviceSection(device: device, minimal: model.minimalMode)
                         if device.id != visible.last?.id {
@@ -181,8 +190,8 @@ struct ContentView: View {
                         }
                     }
                 }
-                .padding(.vertical, 4)
             }
+            .padding(.vertical, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -207,6 +216,29 @@ struct ContentView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+    }
+}
+
+// MARK: - Tailscale warning
+
+struct TailscaleWarningView: View {
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.orange)
+                .padding(.top, 1)
+            Text(message)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(Color.orange.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

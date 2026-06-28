@@ -37,6 +37,16 @@ struct Device: Identifiable {
     }
 }
 
+struct ScanResult {
+    let devices: [Device]
+    let tailscaleWarning: String?
+}
+
+struct TailscaleScanResult {
+    let devices: [Device]
+    let warning: String?
+}
+
 // MARK: - Scanner
 
 enum Scanner {
@@ -100,9 +110,9 @@ enum Scanner {
 
     // MARK: - Top-level scan
 
-    static func scanAll(showAll: Bool = false, onProgress: (@Sendable (Double) -> Void)? = nil) async -> [Device] {
-        if let cliDevices = await scanUsingCLI(showAll: showAll, onProgress: onProgress) {
-            return cliDevices
+    static func scanAll(showAll: Bool = false, onProgress: (@Sendable (Double) -> Void)? = nil) async -> ScanResult {
+        if let cliResult = await scanUsingCLI(showAll: showAll, onProgress: onProgress) {
+            return cliResult
         }
 
         // Run local, gateway, and Tailscale scans in parallel
@@ -110,7 +120,8 @@ enum Scanner {
         async let gateway = scanGateway(showAll: showAll)
         async let remote  = scanTailscaleDevices(showAll: showAll, onProgress: onProgress)
 
-        var all = [await local] + (await remote)
+        let remoteResult = await remote
+        var all = [await local] + remoteResult.devices
         if let gw = await gateway { all.append(gw) }
         // Sort: local first, then has-services before empty, then online before offline, then alphabetical
         all.sort {
@@ -121,7 +132,7 @@ enum Scanner {
             if $0.online != $1.online { return $0.online }
             return $0.name < $1.name
         }
-        return all
+        return ScanResult(devices: all, tailscaleWarning: remoteResult.warning)
     }
 
     // MARK: - CLI-backed scan
@@ -139,6 +150,7 @@ enum Scanner {
     }
 
     struct CLITailscale: Decodable {
+        let error: String?
         let peers: [CLIPeer]?
     }
 
@@ -165,7 +177,7 @@ enum Scanner {
     ]
     static let processPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
-    static func scanUsingCLI(showAll: Bool, onProgress: (@Sendable (Double) -> Void)?) async -> [Device]? {
+    static func scanUsingCLI(showAll: Bool, onProgress: (@Sendable (Double) -> Void)?) async -> ScanResult? {
         guard let cli = cliPaths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
             return nil
         }
@@ -216,7 +228,8 @@ enum Scanner {
             return $0.name < $1.name
         }
         onProgress?(1.0)
-        return devices
+        return ScanResult(devices: devices,
+                          tailscaleWarning: tailscaleWarning(fromCLIError: result.tailscale?.error))
     }
 
     static func webService(from service: CLIService) -> WebService? {
@@ -225,6 +238,32 @@ enum Scanner {
               let url = URL(string: urlString) else { return nil }
         let title = service.title ?? service.name ?? "Port \(port)"
         return WebService(title: title, port: port, url: url, isHTTPS: url.scheme == "https")
+    }
+
+    static func tailscaleWarning(fromCLIError error: String?) -> String? {
+        guard let error, !error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        let lower = error.lowercased()
+        if lower.contains("signed out") {
+            return "Tailscale is signed out. Local services are still listed."
+        }
+        if lower.contains("not available") || lower.contains("not found") {
+            return "Tailscale is off or unavailable. Local services are still listed."
+        }
+        return "\(error). Local services are still listed."
+    }
+
+    static func tailscaleWarning(fromBackendState state: String?) -> String? {
+        guard let state = state?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !state.isEmpty,
+              state.lowercased() != "running" else {
+            return nil
+        }
+        if state.lowercased() == "needslogin" {
+            return "Tailscale is signed out. Local services are still listed."
+        }
+        return "Tailscale is \(state). Local services are still listed."
     }
 
     static func runProcess(executable: String, arguments: [String], timeout: TimeInterval) async -> String? {
@@ -464,12 +503,21 @@ enum Scanner {
 
     // MARK: - Tailscale
 
-    static func scanTailscaleDevices(showAll: Bool = false, onProgress: (@Sendable (Double) -> Void)? = nil) async -> [Device] {
-        guard let statusJSON = await tailscaleStatus(),
-              let data = statusJSON.data(using: .utf8),
-              let obj  = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let peersData = obj["Peer"] as? [String: Any] else {
-            return []
+    static func scanTailscaleDevices(showAll: Bool = false, onProgress: (@Sendable (Double) -> Void)? = nil) async -> TailscaleScanResult {
+        guard let statusJSON = await tailscaleStatus() else {
+            return TailscaleScanResult(devices: [],
+                                       warning: "Tailscale is off or unavailable. Local services are still listed.")
+        }
+        guard let data = statusJSON.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return TailscaleScanResult(devices: [],
+                                       warning: "Tailscale status could not be read. Local services are still listed.")
+        }
+        if let warning = tailscaleWarning(fromBackendState: obj["BackendState"] as? String) {
+            return TailscaleScanResult(devices: [], warning: warning)
+        }
+        guard let peersData = obj["Peer"] as? [String: Any] else {
+            return TailscaleScanResult(devices: [], warning: nil)
         }
 
         struct PeerInfo { let name: String; let ip: String; let dnsName: String; let online: Bool; let os: String? }
@@ -499,7 +547,7 @@ enum Scanner {
         }
 
         let totalPeers = max(peers.count, 1)
-        return await withTaskGroup(of: Device.self) { group in
+        let devices = await withTaskGroup(of: Device.self) { group in
             for peer in peers {
                 group.addTask {
                     guard peer.online else {
@@ -519,6 +567,7 @@ enum Scanner {
             }
             return results
         }
+        return TailscaleScanResult(devices: devices, warning: nil)
     }
 
     // MARK: - Port scanning

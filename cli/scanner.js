@@ -454,6 +454,15 @@ async function getTailscaleStatus() {
   return null;
 }
 
+function tailscaleBackendError(status) {
+  const state = String(status?.BackendState || '').trim();
+  if (!state || state.toLowerCase() === 'running') return null;
+  if (state.toLowerCase() === 'needslogin') {
+    return 'Tailscale is signed out';
+  }
+  return `Tailscale is ${state}`;
+}
+
 async function execTailscale(args, timeout = 6000) {
   for (const tsPath of TAILSCALE_PATHS) {
     const out = await execPromise(`"${tsPath}" ${args}`, timeout);
@@ -469,6 +478,8 @@ async function execTailscale(args, timeout = 6000) {
 async function scanTailscale({ showAll = false } = {}) {
   const status = await getTailscaleStatus();
   if (!status) return { error: 'Tailscale not available', peers: [] };
+  const backendError = tailscaleBackendError(status);
+  if (backendError) return { error: backendError, peers: [] };
   if (!status.Peer) return { peers: [] };
 
   const peers = Object.values(status.Peer)

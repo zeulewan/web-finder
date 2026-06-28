@@ -60,6 +60,15 @@ function execTailscale(args, options = {}) {
   return execSync(`${quoteShell(cmd)} ${args}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options });
 }
 
+function tailscaleBackendWarning(status) {
+  const state = String(status?.BackendState || '').trim();
+  if (!state || state.toLowerCase() === 'running') return null;
+  if (state.toLowerCase() === 'needslogin') {
+    return 'Tailscale is signed out. Open Tailscale and sign in to see devices.';
+  }
+  return `Tailscale is ${state}. Turn it on to see devices.`;
+}
+
 function currentTailscaleOperator() {
   try {
     const prefs = JSON.parse(execTailscale('debug prefs'));
@@ -444,6 +453,8 @@ function fetchLocalManifest() {
 async function magicDnsStatus() {
   try {
     const status = JSON.parse(execTailscale('status --json'));
+    const backendWarning = tailscaleBackendWarning(status);
+    if (backendWarning) return { available: false, ok: false, warning: backendWarning };
     const dnsName = status.Self?.DNSName;
     if (!dnsName) return { available: true, ok: false, warning: 'Tailscale DNSName unavailable.' };
     try {
@@ -472,7 +483,7 @@ async function printStatus({ debug = false } = {}) {
   console.log(`Daemon: ${svc.active ? `running${svc.pid ? ` (pid ${svc.pid})` : ''}` : svc.installed ? 'installed but not running' : 'not installed'}`);
   console.log(`Manifest: ${manifest.ok ? `available at http://127.0.0.1:${MANIFEST_PORT}${MANIFEST_PATH}` : `unavailable (${manifest.error})`}`);
   console.log(`Tailscale Serve: ${serve.active ? 'enabled' : serve.available ? 'not enabled' : 'unavailable'}`);
-  console.log(`MagicDNS: ${magicDns.ok ? `working (${magicDns.dnsName})` : 'not resolving'}`);
+  console.log(`MagicDNS: ${magicDns.ok ? `working (${magicDns.dnsName})` : magicDns.available ? 'not resolving' : 'unavailable'}`);
   if (magicDns.warning) console.log(`Warning: ${magicDns.warning}`);
 
   if (manifest.ok) {
