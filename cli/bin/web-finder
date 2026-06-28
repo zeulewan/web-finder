@@ -780,11 +780,9 @@ if (command === 'update' || args.includes('--update') || args.includes('-u')) {
       const userApps  = path.join(os.homedir(), 'Applications', 'WebFinder.app');
       const sysApps   = '/Applications/WebFinder.app';
       const appPath   = fs.existsSync(sysApps) ? sysApps : fs.existsSync(userApps) ? userApps : null;
-      const installDirs = [
-        fs.existsSync(sysApps) ? '/Applications' : null,
-        fs.existsSync(userApps) ? path.join(os.homedir(), 'Applications') : null,
-      ].filter(Boolean);
-      if (installDirs.length === 0) installDirs.push(path.join(os.homedir(), 'Applications'));
+      const installDir = fs.existsSync(sysApps) || fs.existsSync('/Applications')
+        ? '/Applications'
+        : path.join(os.homedir(), 'Applications');
 
       try {
         const macosDir = path.join(repoRoot, '..', 'macos');
@@ -793,11 +791,9 @@ if (command === 'update' || args.includes('--update') || args.includes('-u')) {
         if (fs.existsSync(buildScript)) {
           console.log('Building WebFinder.app from checked-out repo...');
           execSync('./build.sh', { cwd: macosDir, stdio: 'inherit' });
-          for (const installDir of installDirs) {
-            fs.mkdirSync(installDir, { recursive: true });
-            execSync(`rm -rf "${path.join(installDir, 'WebFinder.app')}" && cp -R "${builtApp}" "${installDir}/"`, { stdio: 'inherit' });
-            console.log(`WebFinder.app installed in ${installDir}.`);
-          }
+          fs.mkdirSync(installDir, { recursive: true });
+          execSync(`rm -rf "${path.join(installDir, 'WebFinder.app')}" && cp -R "${builtApp}" "${installDir}/"`, { stdio: 'inherit' });
+          console.log(`WebFinder.app installed in ${installDir}.`);
           console.log('Restart the app to use the updated build.');
         } else {
           const installed = appPath
@@ -810,13 +806,12 @@ if (command === 'update' || args.includes('--update') || args.includes('-u')) {
           } else {
             const appUrl = 'https://github.com/zeulewan/web-finder/releases/latest/download/WebFinder.app.zip';
             const tmpZip = path.join(repoRoot, 'WebFinder.app.zip');
-            const destDir = fs.existsSync(sysApps) ? '/Applications' : path.join(os.homedir(), 'Applications');
             console.log(`Updating WebFinder.app ${installed} -> ${latest}...`);
             execSync(`curl -fsSL -o "${tmpZip}" "${appUrl}"`, { encoding: 'utf8' });
-            fs.mkdirSync(destDir, { recursive: true });
-            execSync(`rm -rf "${path.join(destDir, 'WebFinder.app')}" && unzip -q "${tmpZip}" -d "${destDir}"`, { stdio: 'inherit' });
+            fs.mkdirSync(installDir, { recursive: true });
+            execSync(`rm -rf "${path.join(installDir, 'WebFinder.app')}" && unzip -q "${tmpZip}" -d "${installDir}"`, { stdio: 'inherit' });
             fs.unlinkSync(tmpZip);
-            console.log(`WebFinder.app updated in ${destDir}.`);
+            console.log(`WebFinder.app updated in ${installDir}.`);
           }
         }
       } catch (e) {
