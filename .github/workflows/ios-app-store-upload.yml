@@ -82,4 +82,11 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/submit-venv"
           source "$RUNNER_TEMP/submit-venv/bin/activate"
           python -m pip install cryptography
+          for attempt in 1 2 3 4 5; do
+            if python scripts/submit-ios-appstore.py "$VERSION" --build-number "$BUILD" --whats-new "Improves refresh reliability on slow or newly connected Tailscale paths. Web Finder now waits for connectivity, tries manifest routes concurrently, and automatically retries when reachable devices initially return no services."; then
+              exit 0
+            fi
+            echo "Submit attempt $attempt failed; waiting for App Store Connect build processing..."
+            sleep 60
+          done
           python scripts/submit-ios-appstore.py "$VERSION" --build-number "$BUILD" --whats-new "Improves refresh reliability on slow or newly connected Tailscale paths. Web Finder now waits for connectivity, tries manifest routes concurrently, and automatically retries when reachable devices initially return no services."
