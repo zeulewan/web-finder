@@ -77,10 +77,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          assets=()
-          [[ -f WebFinder.app.zip ]] && assets+=(WebFinder.app.zip)
-          gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --verify-tag \
-            --title "WebFinder for Tailscale ${GITHUB_REF_NAME#v}" \
+          release_args=(
+            "$GITHUB_REF_NAME"
+            --repo "$GITHUB_REPOSITORY"
+            --verify-tag
+            --title "WebFinder for Tailscale ${GITHUB_REF_NAME#v}"
             --notes-file RELEASE_NOTES.md
+          )
+          if [[ -f WebFinder.app.zip ]]; then
+            gh release create "${release_args[@]}" WebFinder.app.zip
+          else
+            gh release create "${release_args[@]}"
+          fi
