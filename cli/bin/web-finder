@@ -19,8 +19,9 @@ const { execSync } = require('child_process');
 // Resolve symlinks so scanner.js is found even when binary is symlinked to /usr/local/bin
 const realBin  = fs.realpathSync(__filename);
 const repoRoot = path.join(path.dirname(realBin), '..');
-const { scanLocalSS, scanTailscale, scanGateway, getTailscaleServeMap, MANIFEST_PORT, MANIFEST_PATH } = require(path.join(repoRoot, 'scanner.js'));
+const { scanLocalSS, scanTailscale, scanGateway, getTailscaleServeMap, parseTailscaleServeStatus, MANIFEST_PORT, MANIFEST_PATH } = require(path.join(repoRoot, 'scanner.js'));
 const http = require('http');
+const net  = require('net');
 const os   = require('os');
 const dns  = require('dns').promises;
 
@@ -450,6 +451,60 @@ function fetchLocalManifest() {
   });
 }
 
+function tcpReachable(host, port, timeoutMs = 500) {
+  return new Promise((resolve) => {
+    if (!host || !port) {
+      resolve(null);
+      return;
+    }
+    const socket = net.createConnection({
+      host: host === 'localhost' ? '127.0.0.1' : host,
+      port,
+    });
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(value);
+    };
+    socket.setTimeout(timeoutMs, () => finish(false));
+    socket.once('connect', () => finish(true));
+    socket.once('error', () => finish(false));
+  });
+}
+
+async function serveDriftStatus(serve, manifest) {
+  if (!serve.available || !serve.raw) return null;
+
+  const routes = parseTailscaleServeStatus(serve.raw);
+  const serviceRoutes = routes.filter(route => route.backendPort !== MANIFEST_PORT);
+  const advertisedPorts = new Set((manifest.ok ? manifest.manifest.services || [] : [])
+    .map(service => service.port)
+    .filter(Number.isInteger));
+  const managedPorts = new Set(readAutoPublishedPorts());
+  const health = await Promise.all(serviceRoutes.map(route =>
+    tcpReachable(route.backendHost, route.backendPort)));
+  const inspected = serviceRoutes.map((route, index) => ({
+    ...route,
+    advertised: advertisedPorts.has(route.externalPort),
+    managed: managedPorts.has(route.externalPort),
+    reachable: health[index],
+  }));
+  const mappedPorts = new Set(serviceRoutes.map(route => route.externalPort));
+
+  return {
+    total: routes.length,
+    serviceCount: serviceRoutes.length,
+    manifestCount: routes.length - serviceRoutes.length,
+    managedCount: inspected.filter(route => route.managed).length,
+    hidden: inspected.filter(route => !route.advertised),
+    dead: inspected.filter(route => route.reachable === false),
+    unmanaged: inspected.filter(route => !route.managed),
+    trackedMissing: Array.from(managedPorts).filter(port => !mappedPorts.has(port)).sort((a, b) => a - b),
+  };
+}
+
 async function magicDnsStatus() {
   try {
     const status = JSON.parse(execTailscale('status --json'));
@@ -478,6 +533,7 @@ async function printStatus({ debug = false } = {}) {
   const serve = tailscaleServeStatus();
   const manifest = await fetchLocalManifest();
   const magicDns = await magicDnsStatus();
+  const drift = await serveDriftStatus(serve, manifest);
 
   console.log(`web-finder ${versionString()}`);
   console.log(`Daemon: ${svc.active ? `running${svc.pid ? ` (pid ${svc.pid})` : ''}` : svc.installed ? 'installed but not running' : 'not installed'}`);
@@ -491,6 +547,36 @@ async function printStatus({ debug = false } = {}) {
     console.log(`Advertised services: ${services.length}`);
     for (const service of services) {
       console.log(`  - ${service.name || `:${service.port}`} ${service.url}`);
+    }
+  }
+
+  if (drift) {
+    console.log(`Serve routes: ${drift.total} total (${drift.serviceCount} services, ${drift.manifestCount} manifest)`);
+    console.log(`Managed service routes: ${drift.managedCount}`);
+    const clean = drift.hidden.length === 0 && drift.dead.length === 0 &&
+      drift.unmanaged.length === 0 && drift.trackedMissing.length === 0;
+    if (clean) {
+      console.log('Route drift: clean');
+    } else {
+      console.log(`Route drift: ${drift.hidden.length} hidden, ${drift.dead.length} dead, ${drift.unmanaged.length} unmanaged, ${drift.trackedMissing.length} tracked but missing`);
+      const driftedRoutes = drift.hidden
+        .concat(drift.dead, drift.unmanaged)
+        .filter((route, index, all) => all.findIndex(item =>
+          item.externalPort === route.externalPort && item.target === route.target) === index);
+      const shown = debug ? driftedRoutes : driftedRoutes.slice(0, 12);
+      for (const route of shown) {
+        const reasons = [];
+        if (!route.advertised) reasons.push('hidden');
+        if (route.reachable === false) reasons.push('dead backend');
+        if (!route.managed) reasons.push('unmanaged');
+        console.log(`  - :${route.externalPort} -> ${route.target} (${reasons.join(', ')})`);
+      }
+      if (!debug && driftedRoutes.length > shown.length) {
+        console.log(`  ... ${driftedRoutes.length - shown.length} more; run web-finder diagnose for all routes`);
+      }
+      if (drift.trackedMissing.length > 0) {
+        console.log(`  - tracked but missing: ${drift.trackedMissing.map(port => `:${port}`).join(', ')}`);
+      }
     }
   }
 

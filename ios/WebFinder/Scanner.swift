@@ -280,43 +280,75 @@ enum Scanner {
         }
 
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 2.5
-        config.timeoutIntervalForResource = 4.0
+        config.timeoutIntervalForRequest = 9.0
+        config.timeoutIntervalForResource = 12.0
         config.httpMaximumConnectionsPerHost = 2
-        config.waitsForConnectivity = false
+        // A cold Tailscale tunnel can take several seconds to establish on iOS.
+        // Let URLSession wait for the VPN path instead of failing immediately.
+        config.waitsForConnectivity = true
         let session = URLSession(configuration: config, delegate: InsecureTLSDelegate.shared, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
 
-        for attempt in 0..<2 {
-            for (scheme, manifestHost) in candidates {
-                guard let url = URL(string: "\(scheme)://\(manifestHost):\(MANIFEST_PORT)\(MANIFEST_PATH)") else { continue }
-                do {
-                    var req = URLRequest(url: url)
-                    req.timeoutInterval = attempt == 0 ? 2.5 : 4.0
-                    let (data, response) = try await session.data(for: req)
-                    guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
-                    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                          let svcs = json["services"] as? [[String: Any]] else { continue }
-                    return svcs.compactMap { svc -> WebService? in
-                        guard let name = svc["name"] as? String,
-                              let port = svc["port"] as? Int,
-                              let urlStr = svc["url"] as? String,
-                              let origURL = URL(string: urlStr) else { return nil }
-                        if !showAll && isDirectoryListingTitle(name) { return nil }
-                        let scheme = origURL.scheme ?? "http"
-                        // HTTPS services need the DNS name (TLS certs are issued for .ts.net)
-                        let host = scheme == "https" ? dnsName : ip
-                        let path = origURL.path.isEmpty || origURL.path == "/" ? "" : origURL.path
-                        guard let svcURL = URL(string: "\(scheme)://\(host):\(port)\(path)") else { return nil }
-                        return WebService(title: name, port: port, url: svcURL, isHTTPS: scheme == "https")
-                    }
-                } catch {
-                    continue
+        // Race DNS/HTTPS and IP/HTTP candidates together. Sequential attempts made
+        // each failed path consume the full timeout and often required manual refreshes.
+        let timeouts: [TimeInterval] = [3.0, 6.0, 9.0]
+        for (attempt, timeout) in timeouts.enumerated() {
+            if Task.isCancelled { return nil }
+            if let data = await fetchManifestData(candidates: candidates, session: session, timeout: timeout),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let svcs = json["services"] as? [[String: Any]] {
+                return svcs.compactMap { svc -> WebService? in
+                    guard let name = svc["name"] as? String,
+                          let port = svc["port"] as? Int,
+                          let urlStr = svc["url"] as? String,
+                          let origURL = URL(string: urlStr) else { return nil }
+                    if !showAll && isDirectoryListingTitle(name) { return nil }
+                    let scheme = origURL.scheme ?? "http"
+                    // HTTPS services need the DNS name (TLS certs are issued for .ts.net)
+                    let host = scheme == "https" ? dnsName : ip
+                    let path = origURL.path.isEmpty || origURL.path == "/" ? "" : origURL.path
+                    guard let svcURL = URL(string: "\(scheme)://\(host):\(port)\(path)") else { return nil }
+                    return WebService(title: name, port: port, url: svcURL, isHTTPS: scheme == "https")
                 }
             }
-            try? await Task.sleep(nanoseconds: UInt64(250_000_000 * (attempt + 1)))
+            if attempt < timeouts.count - 1 {
+                let delay = attempt == 0 ? 350_000_000 : 900_000_000
+                try? await Task.sleep(nanoseconds: UInt64(delay))
+            }
         }
         return nil
+    }
+
+    private static func fetchManifestData(candidates: [(String, String)], session: URLSession,
+                                          timeout: TimeInterval) async -> Data? {
+        await withTaskGroup(of: Data?.self) { group in
+            for (scheme, manifestHost) in candidates {
+                guard let url = URL(string: "\(scheme)://\(manifestHost):\(MANIFEST_PORT)\(MANIFEST_PATH)") else { continue }
+                group.addTask {
+                    if Task.isCancelled { return nil }
+                    do {
+                        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+                        request.timeoutInterval = timeout
+                        request.setValue("application/json", forHTTPHeaderField: "Accept")
+                        let (data, response) = try await session.data(for: request)
+                        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+                        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                              json["services"] is [[String: Any]] else { return nil }
+                        return data
+                    } catch {
+                        return nil
+                    }
+                }
+            }
+
+            for await data in group {
+                if let data {
+                    group.cancelAll()
+                    return data
+                }
+            }
+            return nil
+        }
     }
 
     static func isDirectoryListingTitle(_ title: String) -> Bool {

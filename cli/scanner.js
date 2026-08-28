@@ -705,27 +705,46 @@ async function getZensicalHints() {
  * Tailscale serve terminates TLS on the Tailscale interface, so remote
  * clients must use https:// with the DNS name for these ports.
  */
+function parseTailscaleServeStatus(out) {
+  const entries = [];
+  let endpoint = null;
+
+  for (const line of String(out || '').split('\n')) {
+    const endpointM = line.match(/^(https?:\/\/\S+)\s+\(tailnet/);
+    if (endpointM) {
+      try {
+        const url = new URL(endpointM[1]);
+        endpoint = {
+          externalPort: parseInt(url.port) || (url.protocol === 'https:' ? 443 : 80),
+          externalScheme: url.protocol.replace(':', ''),
+        };
+      } catch {
+        endpoint = null;
+      }
+      continue;
+    }
+
+    const proxyM = line.match(/^\|--\s+(\S+)\s+proxy\s+(\S+)/);
+    if (!proxyM || !endpoint) continue;
+    const target = proxyM[2];
+    const targetM = target.match(/^https?(?:\+insecure)?:\/\/(\[[^\]]+\]|[^/:]+)(?::(\d+))?/);
+    entries.push({
+      ...endpoint,
+      path: proxyM[1],
+      target,
+      backendHost: targetM ? targetM[1].replace(/^\[|\]$/g, '') : null,
+      backendPort: targetM ? parseInt(targetM[2]) || (target.startsWith('https') ? 443 : 80) : null,
+    });
+  }
+
+  return entries;
+}
+
 async function getTailscaleServeMap() {
   const map = new Map(); // localPort -> externalPort
   const out = await execTailscale('serve status 2>/dev/null');
-  if (!out) return map;
-
-  let extPort = null;
-  for (const line of out.split('\n')) {
-    // Match: https://hostname.ts.net:PORT (tailnet only)
-    // Default HTTPS (port 443) has no :PORT suffix
-    const extM = line.match(/^https:\/\/[^/]+?(?::(\d+))?\s+\(tailnet/);
-    if (extM) {
-      extPort = extM[1] ? parseInt(extM[1]) : 443;
-      continue;
-    }
-    // Match: |-- / proxy http://localhost:PORT
-    // Also handle HTTPS backends served as https+insecure://127.0.0.1:PORT.
-    const proxyM = line.match(/proxy\s+https?(?:\+insecure)?:\/\/(?:localhost|127\.0\.0\.1):(\d+)/);
-    if (proxyM && extPort !== null) {
-      map.set(parseInt(proxyM[1]), extPort);
-      extPort = null;
-    }
+  for (const entry of parseTailscaleServeStatus(out)) {
+    if (entry.backendPort) map.set(entry.backendPort, entry.externalPort);
   }
   return map;
 }
@@ -837,6 +856,6 @@ function fetchManifest(host, fallbackHost = null) {
 module.exports = {
   scanLocal, scanLocalSS, scanTailscale, scanGateway,
   scanPorts, scanPortsBatched, checkPort,
-  getListeningPortsSS, getTailscaleServeMap, fetchManifest,
+  getListeningPortsSS, getTailscaleServeMap, parseTailscaleServeStatus, fetchManifest,
   SCAN_PORTS, MANIFEST_PORT, MANIFEST_PATH,
 };

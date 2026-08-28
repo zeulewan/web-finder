@@ -1,0 +1,33 @@
+name: GitHub Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build macOS app
+        run: bash build.sh
+        working-directory: macos
+
+      - name: Package macOS app
+        run: ditto --norsrc -c -k --keepParent macos/WebFinder.app WebFinder.app.zip
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" WebFinder.app.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "WebFinder for Tailscale $version" \
+            --notes "Bug-fix release improving status diagnostics and iPhone refresh reliability on slow connections."

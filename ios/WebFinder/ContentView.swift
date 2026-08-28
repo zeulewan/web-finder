@@ -75,6 +75,7 @@ class ScannerModel: ObservableObject {
 
     private var scanTask: Task<Void, Never>?
     private var showingCurrentScanResults = false
+    private static let automaticScanAttempts = 2
 
     func scan() {
         if demoMode { return }
@@ -88,22 +89,42 @@ class ScannerModel: ObservableObject {
         scanError = nil
         ScanLog.shared.clear()
         scanTask = Task {
-            let (result, error) = await Scanner.scanAll(showAll: showAllPorts, probeOfflinePeers: debugMode, onProgress: { progress in
-                Task { @MainActor in self.scanProgress = progress }
-            }, onDevice: { device in
-                Task { @MainActor in
-                    if !self.showingCurrentScanResults {
-                        self.devices = []
-                        self.showingCurrentScanResults = true
+            var bestResult: [Device] = []
+            var finalError: String?
+            for attempt in 0..<Self.automaticScanAttempts {
+                if Task.isCancelled { return }
+                let (result, error) = await Scanner.scanAll(showAll: showAllPorts, probeOfflinePeers: debugMode, onProgress: { progress in
+                    Task { @MainActor in
+                        self.scanProgress = (Double(attempt) + progress) / Double(Self.automaticScanAttempts)
                     }
-                    self.devices.append(device)
-                    self.sortDevices()
-                }
-            })
+                }, onDevice: { device in
+                    // Progressive results are useful on the first pass. A recovery
+                    // pass should quietly improve the final result, not duplicate rows.
+                    guard attempt == 0 else { return }
+                    Task { @MainActor in
+                        if !self.showingCurrentScanResults {
+                            // Keep a useful cache visible while cold VPN paths wake up.
+                            if device.services.isEmpty && !self.devices.isEmpty { return }
+                            self.devices = []
+                            self.showingCurrentScanResults = true
+                        }
+                        self.devices.append(device)
+                        self.sortDevices()
+                    }
+                })
+                bestResult = Self.preserveServicesForTransientMisses(result, previous: bestResult)
+                finalError = error
+
+                guard attempt < Self.automaticScanAttempts - 1,
+                      Self.shouldRetryScan(result: bestResult, error: error) else { break }
+                ScanLog.shared.log("Some manifests were unavailable; retrying after the Tailscale path warms up")
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+            if Task.isCancelled { return }
             // Final consistent state
-            self.scanError = error
-            if error == nil || !result.isEmpty {
-                let finalResult = Self.preserveServicesForTransientMisses(result, previous: previousDevices)
+            self.scanError = finalError
+            if finalError == nil || !bestResult.isEmpty {
+                let finalResult = Self.preserveServicesForTransientMisses(bestResult, previous: previousDevices)
                 self.devices = finalResult
                 Self.saveCache(finalResult)
             }
@@ -111,6 +132,14 @@ class ScannerModel: ObservableObject {
             self.scanProgress = 1
             self.scanning = false
         }
+    }
+
+    private static func shouldRetryScan(result: [Device], error: String?) -> Bool {
+        if let error {
+            return error != "NO_CREDENTIALS" && error != "INVALID_CREDENTIALS"
+        }
+        let reachablePeers = result.filter { !$0.isGateway && $0.online }
+        return reachablePeers.contains(where: { $0.manifestUnavailable })
     }
 
     private func sortDevices() {
