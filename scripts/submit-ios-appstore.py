@@ -101,19 +101,67 @@ def find_app_id(bundle_id: str) -> str:
 
 
 def find_version(app_id: str, version: str) -> str | None:
-    params = urllib.parse.urlencode({"filter[platform]": "IOS", "limit": "200"})
-    versions = all_data(f"/v1/apps/{app_id}/appStoreVersions?{params}")
-    for item in versions:
+    for item in app_versions(app_id):
         attrs = item["attributes"]
         if attrs.get("platform") == "IOS" and attrs.get("versionString") == version:
             return item["id"]
     return None
 
 
+def app_versions(app_id: str) -> list[dict]:
+    params = urllib.parse.urlencode({"filter[platform]": "IOS", "limit": "200"})
+    return all_data(f"/v1/apps/{app_id}/appStoreVersions?{params}")
+
+
+def reuse_unreleased_version(app_id: str, version: str) -> str | None:
+    """Rename the one editable iOS version instead of trying to create a second one."""
+    editable_states = {
+        "PREPARE_FOR_SUBMISSION",
+        "DEVELOPER_REJECTED",
+        "METADATA_REJECTED",
+        "REJECTED",
+        "INVALID_BINARY",
+    }
+    candidates = [
+        item
+        for item in app_versions(app_id)
+        if item.get("attributes", {}).get("platform") == "IOS"
+        and item.get("attributes", {}).get("appStoreState") in editable_states
+    ]
+    if not candidates:
+        return None
+    if len(candidates) > 1:
+        versions = ", ".join(
+            item.get("attributes", {}).get("versionString", item["id"])
+            for item in candidates
+        )
+        raise SystemExit(f"Refusing to supersede multiple editable iOS versions: {versions}")
+
+    candidate = candidates[0]
+    old_version = candidate.get("attributes", {}).get("versionString", candidate["id"])
+    response = request(
+        "PATCH",
+        f"/v1/appStoreVersions/{candidate['id']}",
+        {
+            "data": {
+                "type": "appStoreVersions",
+                "id": candidate["id"],
+                "attributes": {"versionString": version},
+            }
+        },
+    )
+    print(f"Reused unreleased App Store version {old_version} as {version}.")
+    return response["data"]["id"]
+
+
 def get_or_create_version(app_id: str, version: str) -> str:
     existing = find_version(app_id, version)
     if existing:
         return existing
+
+    reused = reuse_unreleased_version(app_id, version)
+    if reused:
+        return reused
 
     payload = {
         "data": {
