@@ -100,13 +100,20 @@ def find_app_id(bundle_id: str) -> str:
     return apps[0]["id"]
 
 
-def get_or_create_version(app_id: str, version: str) -> str:
+def find_version(app_id: str, version: str) -> str | None:
     params = urllib.parse.urlencode({"filter[platform]": "IOS", "limit": "200"})
     versions = all_data(f"/v1/apps/{app_id}/appStoreVersions?{params}")
     for item in versions:
         attrs = item["attributes"]
         if attrs.get("platform") == "IOS" and attrs.get("versionString") == version:
             return item["id"]
+    return None
+
+
+def get_or_create_version(app_id: str, version: str) -> str:
+    existing = find_version(app_id, version)
+    if existing:
+        return existing
 
     payload = {
         "data": {
@@ -290,6 +297,14 @@ def main() -> None:
     args = parser.parse_args()
 
     app_id = find_app_id(args.bundle_id)
+    existing_version_id = find_version(app_id, args.version)
+    if not existing_version_id and args.cancel_active_review:
+        active = active_review_submissions(app_id)
+        if active:
+            cancel_other_active_reviews(app_id, "")
+            raise SystemExit(
+                "Superseded review cancellation requested; retry after App Store Connect finishes canceling it."
+            )
     version_id = get_or_create_version(app_id, args.version)
     build_id = latest_eligible_build(app_id, args.build_number)
     attach_build(version_id, build_id)
