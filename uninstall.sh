@@ -5,7 +5,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
-MANIFEST_PORT=9321
 CRON_MARKER="# web-finder-serve"
 AUTO_PUBLISH_STATE="$HOME/.web-finder-auto-published-ports"
 
@@ -88,8 +87,16 @@ stop_pidfile_process() {
     if [ -f "$pidfile" ]; then
         local pid
         pid="$(cat "$pidfile")"
-        if [ -n "$pid" ]; then
-            kill "$pid" 2>/dev/null || true
+        if [[ "$pid" =~ ^[0-9]+$ ]]; then
+            local command=""
+            if [ -r "/proc/$pid/cmdline" ]; then
+                command="$(tr '\0' ' ' < "/proc/$pid/cmdline")"
+            else
+                command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+            fi
+            if [[ "$command" == *web-finder* && "$command" == *serve* ]]; then
+                kill "$pid" 2>/dev/null || true
+            fi
         fi
         rm -f "$pidfile"
         info "Removed pidfile"
@@ -100,17 +107,22 @@ disable_tailscale_manifest_serve() {
     command -v tailscale &>/dev/null || return 0
 
     if [ -f "$AUTO_PUBLISH_STATE" ]; then
-        while IFS= read -r port; do
-            if [[ "$port" =~ ^[0-9]+$ ]]; then
-                tailscale serve --https="$port" off 2>/dev/null || true
-                tailscale serve --http="$port" off 2>/dev/null || true
-            fi
-        done < "$AUTO_PUBLISH_STATE"
-        rm -f "$AUTO_PUBLISH_STATE"
+        if head -c 1 "$AUTO_PUBLISH_STATE" | grep -q '{'; then
+            warn "Keeping WebFinder route ownership state because the CLI could not safely reconcile it"
+        else
+            while IFS= read -r port; do
+                if [[ "$port" =~ ^[0-9]+$ ]]; then
+                    tailscale serve --https="$port" off 2>/dev/null || true
+                    tailscale serve --http="$port" off 2>/dev/null || true
+                fi
+            done < "$AUTO_PUBLISH_STATE"
+            rm -f "$AUTO_PUBLISH_STATE"
+        fi
     fi
 
-    tailscale serve --https="$MANIFEST_PORT" off 2>/dev/null || true
-    tailscale serve --http="$MANIFEST_PORT" off 2>/dev/null || true
+    # The current CLI removes the manifest route only after verifying its exact
+    # backend. If that step was unavailable, preserve port 9321 rather than risk
+    # deleting a user-managed route that now occupies it.
 }
 
 remove_cli_symlink() {
@@ -196,15 +208,6 @@ fi
 if [ -d "/Applications/WebFinder.app" ]; then
     sudo rm -rf "/Applications/WebFinder.app"
     info "Removed /Applications/WebFinder.app"
-fi
-
-# Kill running process
-if pkill -f "web-finder.*serve" 2>/dev/null; then
-    info "Stopped running web-finder manifest server"
-fi
-
-if pkill -f WebFinder 2>/dev/null; then
-    info "Stopped running WebFinder process"
 fi
 
 echo ""

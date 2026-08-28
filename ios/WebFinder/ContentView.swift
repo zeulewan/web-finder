@@ -46,9 +46,7 @@ class ScannerModel: ObservableObject {
     var invalidCreds: Bool { scanError == "INVALID_CREDENTIALS" }
     var isConfigured: Bool {
         if demoMode { return true }
-        let id = UserDefaults.standard.string(forKey: "tsClientID") ?? ""
-        let secret = UserDefaults.standard.string(forKey: "tsClientSecret") ?? ""
-        return !id.isEmpty && !secret.isEmpty
+        return CredentialStore.isConfigured
     }
 
     func loadDemo() {
@@ -75,7 +73,13 @@ class ScannerModel: ObservableObject {
 
     private var scanTask: Task<Void, Never>?
     private var showingCurrentScanResults = false
-    private static let automaticScanAttempts = 2
+    private static let automaticScanAttempts = 3
+
+    func refreshIfStale(maxAge: TimeInterval = 30) {
+        guard !scanning else { return }
+        guard let lastScan else { scan(); return }
+        if Date().timeIntervalSince(lastScan) >= maxAge { scan() }
+    }
 
     func scan() {
         if demoMode { return }
@@ -192,6 +196,7 @@ class ScannerModel: ObservableObject {
 
 struct ContentView: View {
     @EnvironmentObject private var model: ScannerModel
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showSettings = false
 
     var body: some View {
@@ -224,7 +229,10 @@ struct ContentView: View {
                     }
                 }
             }
-            .onAppear { model.scan() }
+            .onAppear { model.refreshIfStale(maxAge: 5) }
+            .onChange(of: scenePhase) { phase in
+                if phase == .active { model.refreshIfStale() }
+            }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
             }
@@ -322,6 +330,7 @@ struct SetupView: View {
     @EnvironmentObject private var model: ScannerModel
     @State private var clientID = ""
     @State private var clientSecret = ""
+    @State private var publisherURL = ""
     @State private var showSafari = false
 
     static let oauthURL = URL(string: "https://login.tailscale.com/admin/settings/trust-credentials/add")
@@ -346,7 +355,7 @@ struct SetupView: View {
                 Text("Connect to Tailscale")
                     .font(.title3.bold())
                     .foregroundStyle(.primary)
-                Text("One-time setup. Create an OAuth client to let Web Finder discover your devices.")
+                Text("Paste a WebFinder publisher URL, or use Tailscale OAuth to discover every device.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -375,6 +384,20 @@ struct SetupView: View {
             }
 
             VStack(spacing: 10) {
+                TextField("Publisher URL (recommended)", text: $publisherURL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .font(.system(.footnote, design: .monospaced))
+                    .padding(.horizontal)
+
+                Text("Run `web-finder qr` on a publisher and paste the URL here. No API credentials are required.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
+
+                Divider().padding(.horizontal)
+
                 HStack {
                     Text(clientID.isEmpty ? "Client ID" : clientID)
                         .font(.system(.footnote, design: .monospaced))
@@ -427,8 +450,9 @@ struct SetupView: View {
                         .padding(.vertical, 8)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(clientID.trimmingCharacters(in: .whitespaces).isEmpty ||
-                          clientSecret.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(publisherURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                          (clientID.trimmingCharacters(in: .whitespaces).isEmpty ||
+                           clientSecret.trimmingCharacters(in: .whitespaces).isEmpty))
                 .padding(.horizontal)
             }
 
@@ -445,6 +469,11 @@ struct SetupView: View {
             Spacer()
         }
         .padding()
+        .onAppear {
+            clientID = CredentialStore.clientID
+            clientSecret = CredentialStore.clientSecret
+            publisherURL = CredentialStore.publisherURL
+        }
     }
 
     func stepRow(number: String, text: String) -> some View {
@@ -464,9 +493,11 @@ struct SetupView: View {
     func saveAndScan() {
         let id = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
         let secret = clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !id.isEmpty, !secret.isEmpty else { return }
-        UserDefaults.standard.set(id, forKey: "tsClientID")
-        UserDefaults.standard.set(secret, forKey: "tsClientSecret")
+        let publisher = publisherURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !publisher.isEmpty || (!id.isEmpty && !secret.isEmpty) else { return }
+        CredentialStore.publisherURL = publisher
+        CredentialStore.clientID = id
+        CredentialStore.clientSecret = secret
         model.scan()
     }
 }
@@ -476,14 +507,20 @@ struct SetupView: View {
 struct SettingsView: View {
     @EnvironmentObject private var model: ScannerModel
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("tsClientID") private var clientID = ""
-    @AppStorage("tsClientSecret") private var clientSecret = ""
+    @State private var clientID = ""
+    @State private var clientSecret = ""
+    @State private var publisherURL = ""
     @State private var showSafari = false
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
+                    TextField("Publisher URL", text: $publisherURL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+
                     TextField("Client ID", text: $clientID)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -505,7 +542,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Tailscale")
                 } footer: {
-                    Text("OAuth client credentials. Never expires.")
+                    Text("A publisher URL needs no Tailscale API credentials. OAuth remains available for direct discovery.")
                 }
 
                 Section {
@@ -574,8 +611,7 @@ struct SettingsView: View {
 
                 Section {
                     Button(role: .destructive) {
-                        UserDefaults.standard.removeObject(forKey: "tsClientID")
-                        UserDefaults.standard.removeObject(forKey: "tsClientSecret")
+                        CredentialStore.clear()
                         clientID = ""
                         clientSecret = ""
                         model.devices = []
@@ -593,9 +629,20 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                clientID = CredentialStore.clientID
+                clientSecret = CredentialStore.clientSecret
+                publisherURL = CredentialStore.publisherURL
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button("Done") {
+                        CredentialStore.clientID = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
+                        CredentialStore.clientSecret = clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+                        CredentialStore.publisherURL = publisherURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                        model.scan()
+                        dismiss()
+                    }
                 }
             }
         }

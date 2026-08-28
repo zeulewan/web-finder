@@ -3,16 +3,15 @@ import Network
 
 // MARK: - Models
 
-struct WebService: Identifiable {
-    let id = UUID()
+struct WebService: Identifiable, Codable {
     let title: String     // HTML <title> or fallback
     let port: Int
     let url: URL
     let isHTTPS: Bool
+    var id: String { "\(title)|\(port)|\(url.absoluteString)" }
 }
 
-struct Device: Identifiable {
-    let id = UUID()
+struct Device: Identifiable, Codable {
     let name: String
     let ip: String
     let isLocal: Bool
@@ -20,6 +19,7 @@ struct Device: Identifiable {
     let os: String?       // "linux", "darwin", "windows" from Tailscale
     let online: Bool
     var services: [WebService]
+    var id: String { "\(name)|\(ip)" }
 
     init(name: String, ip: String, isLocal: Bool, isGateway: Bool = false, os: String?, online: Bool, services: [WebService]) {
         self.name = name; self.ip = ip; self.isLocal = isLocal; self.isGateway = isGateway
@@ -399,12 +399,11 @@ enum Scanner {
         }
         guard !services.isEmpty else { return nil }
 
-        // Detect hardware model (e.g. "UniFi Express"), fall back to page title, ISP, etc.
+        // Detect hardware model (e.g. "UniFi Express"), then use a local page title.
         let model = await detectUnifiModel(host: ip)
         let name: String
         if let model { name = model }
         else if let title = services.first?.title { name = title }
-        else if let isp = await getISPName() { name = "\(isp) Modem" }
         else { name = "Gateway" }
         return Device(name: name, ip: ip, isLocal: false, isGateway: true, os: nil,
                       online: true, services: services)
@@ -435,21 +434,6 @@ enum Scanner {
         }
     }
 
-    static func getISPName() async -> String? {
-        guard let url = URL(string: "https://ipinfo.io/json") else { return nil }
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 3.0
-        let session = URLSession(configuration: config)
-        do {
-            let (data, _) = try await session.data(from: url)
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let org = json["org"] as? String, !org.isEmpty else { return nil }
-            return org.replacingOccurrences(of: #"^AS\d+\s+"#, with: "", options: .regularExpression)
-        } catch {
-            return nil
-        }
-    }
-
     // MARK: - Manifest
 
     /// Fetch the web-finder manifest from a peer. Returns parsed services on success, nil if unavailable.
@@ -470,20 +454,30 @@ enum Scanner {
             guard let url = URL(string: "\(scheme)://\(manifestHost):\(MANIFEST_PORT)\(MANIFEST_PATH)") else { continue }
             do {
                 let (data, response) = try await session.data(from: url)
-                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                      data.count <= 65_536 else { continue }
                 guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let svcs = json["services"] as? [[String: Any]] else { continue }
+                      json["version"] as? Int == 1,
+                      let svcs = json["services"] as? [[String: Any]], svcs.count <= 256 else { continue }
                 return svcs.compactMap { svc -> WebService? in
-                    guard let name = svc["name"] as? String,
+                    guard let rawName = svc["name"] as? String,
                           let port = svc["port"] as? Int,
+                          (1...65_535).contains(port),
                           let urlStr = svc["url"] as? String,
-                          let origURL = URL(string: urlStr) else { return nil }
+                          urlStr.count <= 2_048,
+                          let origURL = URL(string: urlStr),
+                          let scheme = origURL.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return nil }
+                    let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !name.isEmpty, name.count <= 200 else { return nil }
                     if !showAll && isDirectoryListingTitle(name) { return nil }
-                    let scheme = origURL.scheme ?? "http"
                     // HTTPS services need the DNS name (TLS certs are issued for .ts.net)
                     let host = scheme == "https" ? dnsName : ip
-                    let path = origURL.path.isEmpty || origURL.path == "/" ? "" : origURL.path
-                    guard let svcURL = URL(string: "\(scheme)://\(host):\(port)\(path)") else { return nil }
+                    var components = URLComponents(url: origURL, resolvingAgainstBaseURL: false)
+                    components?.host = host
+                    components?.port = port
+                    components?.user = nil
+                    components?.password = nil
+                    guard let svcURL = components?.url else { return nil }
                     return WebService(title: name, port: port, url: svcURL, isHTTPS: scheme == "https")
                 }
             } catch {
@@ -525,7 +519,7 @@ enum Scanner {
         let peers: [PeerInfo] = peersData.compactMap { _, v in
             guard let peer = v as? [String: Any],
                   let ips  = peer["TailscaleIPs"] as? [String],
-                  let ip   = ips.first else { return nil }
+                  let ip = ips.first(where: { !$0.contains(":") }) ?? ips.first else { return nil }
 
             // Full MagicDNS name for HTTPS URLs (strip trailing dot)
             let rawDNS = (peer["DNSName"] as? String ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "."))

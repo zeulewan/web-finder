@@ -6,8 +6,6 @@ cd "$(dirname "$0")"
 SCHEME="WebFinder"
 PROJECT="WebFinder.xcodeproj"
 ARCHIVE="build/WebFinder.xcarchive"
-EXPORT_DIR="build/export"
-EXPORT_PLIST="ExportOptions.plist"
 
 echo "==> Cleaning..."
 rm -rf build

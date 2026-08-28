@@ -795,7 +795,7 @@
 <!-- NAV -->
 <nav>
   <span class="logo">WebFinder for Tailscale</span>
-  <span class="badge">v1.3.10</span>
+  <span class="badge">v1.4.0</span>
   <a class="nav-link" href="docs.html">Docs</a>
   <a class="gh" href="https://github.com/zeulewan/web-finder" target="_blank">
     <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
@@ -846,7 +846,7 @@
       </div>
       <details class="setup-dropdown">
         <summary>Setup guide</summary>
-        <p style="margin-top: 16px; font-size: 13px; color: var(--text-dim); max-width: 420px; margin-left: auto; margin-right: auto; line-height: 1.6;">Create a Tailscale OAuth client with <strong>Devices: Read</strong> scope, then paste the Client ID and Secret into the app. Install and start WebFinder on each Mac or Linux device you want to show up.</p>
+        <p style="margin-top: 16px; font-size: 13px; color: var(--text-dim); max-width: 420px; margin-left: auto; margin-right: auto; line-height: 1.6;">Paste the publisher URL printed by <code>web-finder qr</code>, or create a Tailscale OAuth client with <strong>Devices: Read</strong> scope. Install and start WebFinder on each Mac or Linux device you want to show up.</p>
         <div class="phone-gallery" style="margin-top: 20px;">
           <div class="phone-frame-wrap">
             <div class="phone-label">Walkthrough</div>
@@ -1090,7 +1090,7 @@
 
     <details class="faq-item">
       <summary>Do I need a paid Tailscale account?</summary>
-      <div class="faq-answer">No. WebFinder for Tailscale works with free personal Tailscale accounts. You just need to create an OAuth client with the <strong>Devices: Read</strong> scope, which is available to all Tailscale users.</div>
+      <div class="faq-answer">No. WebFinder for Tailscale works with free personal Tailscale accounts. Use the publisher URL from <code>web-finder qr</code> without API credentials, or create an OAuth client with the <strong>Devices: Read</strong> scope.</div>
     </details>
 
     <details class="faq-item">
@@ -1110,7 +1110,7 @@
 
     <details class="faq-item">
       <summary>Is my data sent to any servers?</summary>
-      <div class="faq-answer">No. OAuth credentials are stored locally on your device. The app connects to <code>api.tailscale.com</code> to fetch your device list, then connects directly to WebFinder manifest endpoints and service URLs on your own tailnet. There is no analytics, tracking, or telemetry.</div>
+      <div class="faq-answer">No. OAuth secrets are stored in the iOS Keychain. Publisher mode stays entirely on your tailnet; OAuth mode connects to <code>api.tailscale.com</code> for the device list. There is no analytics, tracking, or telemetry.</div>
     </details>
 
     <details class="faq-item">

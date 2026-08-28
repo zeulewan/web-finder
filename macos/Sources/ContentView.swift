@@ -29,6 +29,7 @@ class ScannerModel: ObservableObject {
         } else {
             minimalMode = UserDefaults.standard.bool(forKey: "minimalMode")
         }
+        devices = Self.loadCache()
     }
 
     func scan(retryAttempts: Int = 2) {
@@ -45,7 +46,10 @@ class ScannerModel: ObservableObject {
             let result = await Scanner.scanAll(showAll: showAllPorts) { progress in
                 Task { @MainActor in self.scanProgress = progress }
             }
-            self.devices = result.devices
+            if !result.devices.isEmpty || self.devices.isEmpty {
+                self.devices = result.devices
+                Self.saveCache(result.devices)
+            }
             self.tailscaleWarning = result.tailscaleWarning
             self.lastScan = Date()
             self.scanProgress = 1
@@ -57,6 +61,21 @@ class ScannerModel: ObservableObject {
                 self.scheduleRetry(retryAttempts: retryAttempts - 1)
             }
         }
+    }
+
+    private static let cacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("WebFinder/devices.json")
+
+    private static func saveCache(_ devices: [Device]) {
+        guard let data = try? JSONEncoder().encode(devices) else { return }
+        try? FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: cacheURL, options: .atomic)
+    }
+
+    private static func loadCache() -> [Device] {
+        guard let data = try? Data(contentsOf: cacheURL),
+              let devices = try? JSONDecoder().decode([Device].self, from: data) else { return [] }
+        return devices
     }
 
     private func scheduleRetry(retryAttempts: Int) {
@@ -97,9 +116,6 @@ struct ContentView: View {
             footerBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            model.scan()
-        }
     }
 
     // MARK: Header

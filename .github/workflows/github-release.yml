@@ -5,29 +5,82 @@ on:
     tags:
       - "v*"
 
+concurrency:
+  group: github-release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 jobs:
   release:
     runs-on: macos-15
+    env:
+      HAS_DEVELOPER_ID: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 != '' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+
+      - name: Validate tag and run checks
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          test "$(node -p 'require("./cli/package.json").version')" = "$version"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' ios/WebFinder/Info.plist)" = "$version"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' macos/Info.plist)" = "$version"
+          npm ci --prefix cli
+          brew install swiftlint
+          npm --prefix cli audit --audit-level=high
+          npm --prefix cli run check
+          swiftlint lint --quiet
+          swift build --package-path macos
+          xcodebuild -project ios/WebFinder.xcodeproj -scheme WebFinder \
+            -destination 'generic/platform=iOS Simulator' -sdk iphonesimulator \
+            build CODE_SIGNING_ALLOWED=NO
 
       - name: Build macOS app
         run: bash build.sh
         working-directory: macos
 
-      - name: Package macOS app
-        run: ditto --norsrc -c -k --keepParent macos/WebFinder.app WebFinder.app.zip
+      - name: Import Developer ID certificate
+        if: env.HAS_DEVELOPER_ID == 'true'
+        uses: apple-actions/import-codesign-certs@d5eb0a74eba413a19c8ee15d93a538d1657da86d # v5
+        with:
+          p12-file-base64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
+          p12-password: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+
+      - name: Sign and notarize macOS app
+        if: env.HAS_DEVELOPER_ID == 'true'
+        env:
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: scripts/sign-and-notarize-macos.sh macos/WebFinder.app WebFinder.app.zip
+
+      - name: Refuse unsigned macOS artifacts
+        run: |
+          set -euo pipefail
+          if [[ -e WebFinder.app.zip ]]; then
+            codesign --verify --strict --verbose=2 macos/WebFinder.app
+            xcrun stapler validate macos/WebFinder.app
+          else
+            echo "Developer ID certificate is not configured; publishing source/CLI release without an unsafe unsigned app archive."
+          fi
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          gh release create "$GITHUB_REF_NAME" WebFinder.app.zip \
+          set -euo pipefail
+          assets=()
+          [[ -f WebFinder.app.zip ]] && assets+=(WebFinder.app.zip)
+          gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
-            --title "WebFinder for Tailscale $version" \
-            --notes "Bug-fix release improving status diagnostics and iPhone refresh reliability on slow connections."
+            --title "WebFinder for Tailscale ${GITHUB_REF_NAME#v}" \
+            --notes-file RELEASE_NOTES.md

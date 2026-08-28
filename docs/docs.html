@@ -232,7 +232,7 @@ web-finder stop</code></pre>
 
     <section>
       <h2>iPhone and iPad</h2>
-      <p>The iOS app reads your Tailscale device list with a local OAuth credential, then fetches WebFinder manifests from your own tailnet. It does not send data to WebFinder servers.</p>
+      <p>The iOS app can read your Tailscale device list with a local OAuth credential, or fetch a credential-free global manifest from a publisher URL printed by <code>web-finder qr</code>. OAuth secrets are stored in the iOS Keychain. It does not send data to WebFinder servers.</p>
       <p>
         <a href="https://apps.apple.com/app/web-finder-for-tailscale/id6759476914">
           <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" width="152">

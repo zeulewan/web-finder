@@ -14,12 +14,14 @@
 
 const path = require('path');
 const fs   = require('fs');
-const { execSync } = require('child_process');
+const { execFileSync, execSync } = require('child_process');
 
 // Resolve symlinks so scanner.js is found even when binary is symlinked to /usr/local/bin
 const realBin  = fs.realpathSync(__filename);
 const repoRoot = path.join(path.dirname(realBin), '..');
-const { scanLocalSS, scanTailscale, scanGateway, getTailscaleServeMap, parseTailscaleServeStatus, MANIFEST_PORT, MANIFEST_PATH } = require(path.join(repoRoot, 'scanner.js'));
+const { scanLocalSS, scanTailscale, scanGateway, getTailscaleServeRoutes, parseTailscaleServeStatus, parseTailscaleServeStatusJSON, MANIFEST_PORT, MANIFEST_PATH, GLOBAL_MANIFEST_PATH } = require(path.join(repoRoot, 'scanner.js'));
+const { parseAutoPublishState, planServeReconciliation } = require(path.join(repoRoot, 'serve-state.js'));
+const { applyServiceConfig, configPath, loadConfig } = require(path.join(repoRoot, 'config.js'));
 const http = require('http');
 const net  = require('net');
 const os   = require('os');
@@ -58,7 +60,19 @@ function tailscaleCommand() {
 function execTailscale(args, options = {}) {
   const cmd = tailscaleCommand();
   if (!cmd) throw new Error('tailscale command not found');
-  return execSync(`${quoteShell(cmd)} ${args}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options });
+  if (!Array.isArray(args)) throw new TypeError('execTailscale expects an argument array');
+  return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options });
+}
+
+function publisherURL() {
+  try {
+    const status = JSON.parse(execTailscale(['status', '--json']));
+    const dnsName = String(status?.Self?.DNSName || '').replace(/\.$/, '');
+    if (dnsName) return `https://${dnsName}:${MANIFEST_PORT}${GLOBAL_MANIFEST_PATH}`;
+    const ip = (status?.Self?.TailscaleIPs || []).find(candidate => !candidate.includes(':'));
+    if (ip) return `http://${ip}:${MANIFEST_PORT}${GLOBAL_MANIFEST_PATH}`;
+  } catch {}
+  return null;
 }
 
 function tailscaleBackendWarning(status) {
@@ -72,7 +86,7 @@ function tailscaleBackendWarning(status) {
 
 function currentTailscaleOperator() {
   try {
-    const prefs = JSON.parse(execTailscale('debug prefs'));
+    const prefs = JSON.parse(execTailscale(['debug', 'prefs']));
     return prefs.OperatorUser || '';
   } catch {
     return null;
@@ -173,24 +187,30 @@ function printTailscaleServePermissionHelp({ autoPublish = false } = {}) {
   console.error(`  web-finder start${autoPublish ? ' --auto-publish' : ''}`);
 }
 
-function readAutoPublishedPorts() {
+function readAutoPublishState() {
   try {
-    return fs.readFileSync(AUTO_PUBLISH_STATE, 'utf8')
-      .split('\n')
-      .map(line => parseInt(line.trim()))
-      .filter(port => Number.isInteger(port) && port > 0);
+    return parseAutoPublishState(fs.readFileSync(AUTO_PUBLISH_STATE, 'utf8'));
   } catch {
-    return [];
+    return parseAutoPublishState('');
   }
 }
 
-function writeAutoPublishedPorts(ports) {
-  const unique = Array.from(new Set(ports)).sort((a, b) => a - b);
-  if (unique.length === 0) {
+function readAutoPublishedPorts() {
+  const state = readAutoPublishState();
+  return Array.from(new Set([
+    ...state.routes.map(route => route.externalPort),
+    ...state.legacyPorts,
+  ])).sort((a, b) => a - b);
+}
+
+function writeAutoPublishState(state) {
+  if (!state.routes.length) {
     try { fs.unlinkSync(AUTO_PUBLISH_STATE); } catch {}
     return;
   }
-  fs.writeFileSync(AUTO_PUBLISH_STATE, `${unique.join('\n')}\n`);
+  const tmp = `${AUTO_PUBLISH_STATE}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+  fs.renameSync(tmp, AUTO_PUBLISH_STATE);
 }
 
 function hasCommand(cmd) {
@@ -221,10 +241,25 @@ function preferredBinPath() {
 }
 
 function autostartNodeCommand() {
-  if (process.platform === 'darwin') {
-    return ['/usr/bin/env', 'node'];
-  }
   return [process.execPath];
+}
+
+function autostartUsesAutoPublish() {
+  const info = getAutostartInfo();
+  const files = [info.plist, info.unit, info.init].filter(Boolean);
+  for (const file of files) {
+    try {
+      if (fs.readFileSync(file, 'utf8').includes('--auto-publish')) return true;
+    } catch {}
+  }
+  if (info.type === 'cron' && hasCommand('crontab')) {
+    try {
+      return execSync('crontab -l', { encoding: 'utf8' })
+        .split('\n')
+        .some(line => line.includes('# web-finder-serve') && line.includes('--auto-publish'));
+    } catch {}
+  }
+  return readAutoPublishedPorts().length > 0;
 }
 
 function isGitCheckout() {
@@ -317,23 +352,49 @@ function quoteRcArg(str) {
   return `'${String(str).replace(/'/g, "'\\''")}'`;
 }
 
+function xmlEscape(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function quoteSystemdArg(str) {
+  return `"${String(str).replace(/([\\"])/g, '\\$1')}"`;
+}
+
 function pidfileStatus(pidfile) {
   const installed = fs.existsSync(pidfile);
   const pid = installed ? fs.readFileSync(pidfile, 'utf8').trim() : null;
   if (pid) {
     try {
-      execSync(`kill -0 ${pid}`, { encoding: 'utf8' });
-      return { installed: true, active: true, pid };
+      if (pidMatchesWebFinder(pid)) return { installed: true, active: true, pid };
     } catch {}
   }
   return { installed, active: false, pid: null };
 }
 
+function pidMatchesWebFinder(pid) {
+  if (!/^\d+$/.test(String(pid))) return false;
+  try {
+    process.kill(Number(pid), 0);
+    const procCmdline = `/proc/${pid}/cmdline`;
+    const command = fs.existsSync(procCmdline)
+      ? fs.readFileSync(procCmdline, 'utf8').replace(/\0/g, ' ')
+      : execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' });
+    return command.includes('web-finder') && command.includes('serve');
+  } catch {
+    return false;
+  }
+}
+
 function stopPidfileProcess(pidfile) {
   if (!fs.existsSync(pidfile)) return;
   const pid = fs.readFileSync(pidfile, 'utf8').trim();
-  if (pid) {
-    try { execSync(`kill ${pid}`, { encoding: 'utf8' }); } catch {}
+  if (pidMatchesWebFinder(pid)) {
+    try { process.kill(Number(pid), 'SIGTERM'); } catch {}
   }
   fs.unlinkSync(pidfile);
 }
@@ -372,12 +433,19 @@ function serviceStatus() {
       const running = /\bstate = running\b/.test(out) || Boolean(pid);
       return { installed: true, active: running, pid };
     } catch {
-      return { installed: false, active: false, pid: null };
+      return { installed: fs.existsSync(info.plist), active: false, pid: null };
     }
   }
 
   if (info.type === 'cron') {
-    return pidfileStatus(info.pidfile);
+    const status = pidfileStatus(info.pidfile);
+    if (status.installed) return status;
+    try {
+      const installed = execSync('crontab -l', { encoding: 'utf8' }).includes('# web-finder-serve');
+      return { installed, active: false, pid: null };
+    } catch {
+      return status;
+    }
   }
 
   if (info.type === 'procd') {
@@ -397,6 +465,7 @@ function serviceStatus() {
     return { installed: installed || legacy.installed, active: legacy.active, pid: legacy.pid };
   }
 
+  const installed = fs.existsSync(info.unit);
   try {
     const active = execSync('systemctl --user is-active web-finder-serve', { encoding: 'utf8' }).trim();
     let pid = null;
@@ -406,17 +475,21 @@ function serviceStatus() {
     } catch {}
     return { installed: true, active: active === 'active', pid };
   } catch {
-    return { installed: false, active: false, pid: null };
+    return { installed, active: false, pid: null };
   }
 }
 
 function tailscaleServeStatus() {
   try {
-    const out = execTailscale('serve status');
+    const json = execTailscale(['serve', 'status', '--json']);
+    const routes = parseTailscaleServeStatusJSON(json);
+    let out = '';
+    try { out = execTailscale(['serve', 'status']).trim(); } catch {}
     return {
       available: true,
-      active: out.includes(`:${MANIFEST_PORT}`) || out.includes(`127.0.0.1:${MANIFEST_PORT}`),
-      raw: out.trim(),
+      active: routes.some(route => route.backendPort === MANIFEST_PORT),
+      raw: out,
+      routes,
     };
   } catch (e) {
     return { available: false, active: false, error: e.message };
@@ -475,9 +548,9 @@ function tcpReachable(host, port, timeoutMs = 500) {
 }
 
 async function serveDriftStatus(serve, manifest) {
-  if (!serve.available || !serve.raw) return null;
+  if (!serve.available) return null;
 
-  const routes = parseTailscaleServeStatus(serve.raw);
+  const routes = serve.routes || parseTailscaleServeStatus(serve.raw);
   const serviceRoutes = routes.filter(route => route.backendPort !== MANIFEST_PORT);
   const advertisedPorts = new Set((manifest.ok ? manifest.manifest.services || [] : [])
     .map(service => service.port)
@@ -507,7 +580,7 @@ async function serveDriftStatus(serve, manifest) {
 
 async function magicDnsStatus() {
   try {
-    const status = JSON.parse(execTailscale('status --json'));
+    const status = JSON.parse(execTailscale(['status', '--json']));
     const backendWarning = tailscaleBackendWarning(status);
     if (backendWarning) return { available: false, ok: false, warning: backendWarning };
     const dnsName = status.Self?.DNSName;
@@ -528,12 +601,30 @@ async function magicDnsStatus() {
   }
 }
 
-async function printStatus({ debug = false } = {}) {
+async function printStatus({ debug = false, json = false } = {}) {
   const svc = serviceStatus();
   const serve = tailscaleServeStatus();
   const manifest = await fetchLocalManifest();
   const magicDns = await magicDnsStatus();
   const drift = await serveDriftStatus(serve, manifest);
+
+  if (json) {
+    console.log(JSON.stringify({
+      version: versionString(),
+      daemon: { ...svc, autoPublish: autostartUsesAutoPublish() },
+      manifest,
+      tailscaleServe: {
+        available: serve.available,
+        active: serve.active,
+        routes: serve.routes || [],
+        ...(serve.error ? { error: serve.error } : {}),
+      },
+      magicDNS: magicDns,
+      drift,
+      config: { path: configPath(), error: loadConfig().error },
+    }, null, 2));
+    return;
+  }
 
   console.log(`web-finder ${versionString()}`);
   console.log(`Daemon: ${svc.active ? `running${svc.pid ? ` (pid ${svc.pid})` : ''}` : svc.installed ? 'installed but not running' : 'not installed'}`);
@@ -622,73 +713,108 @@ function getAutostartInfo() {
 
 function setupTailscaleServe({ autoPublish = false } = {}) {
   try {
-    try { execTailscale(`serve --http=${MANIFEST_PORT} off`); } catch {}
-    execTailscale(`serve --bg --https=${MANIFEST_PORT} http://127.0.0.1:${MANIFEST_PORT}`);
+    const routes = parseTailscaleServeStatusJSON(execTailscale(['serve', 'status', '--json']));
+    const existing = routes.find(route => route.externalPort === MANIFEST_PORT && route.path === '/');
+    const target = `http://127.0.0.1:${MANIFEST_PORT}`;
+    if (existing && existing.target !== target) {
+      console.error(`Tailscale Serve setup skipped: preserving existing :${MANIFEST_PORT}/ -> ${existing.target}`);
+      return false;
+    }
+    execTailscale(['serve', '--bg', `--https=${MANIFEST_PORT}`, `http://127.0.0.1:${MANIFEST_PORT}`]);
     console.log('Tailscale Serve enabled for tailnet-only manifest access.');
+    return true;
   } catch (e) {
     if (isTailscaleServePermissionError(e)) {
       printTailscaleServePermissionHelp({ autoPublish });
-      return;
+      return false;
     }
     console.error('Tailscale Serve setup skipped:', e.message);
+    return false;
   }
 }
 
-async function syncTailscaleServeServices({ showAll = false } = {}) {
-  const existingServeMap = await getTailscaleServeMap();
-  const services = await scanLocalSS({ showAll });
-  const desiredPorts = new Set(services
-    .map(service => service.port)
-    .filter(port => port && port !== MANIFEST_PORT));
-  const activeAutoPublishedPorts = [];
-  let count = 0;
-  const autoPublishedPorts = readAutoPublishedPorts();
-  for (const port of autoPublishedPorts) {
-    if (desiredPorts.has(port)) {
-      activeAutoPublishedPorts.push(port);
-      continue;
-    }
-    try { execTailscale(`serve --https=${port} off`); } catch {}
-    try { execTailscale(`serve --http=${port} off`); } catch {}
-  }
-  for (const service of services) {
-    if (!service.port || service.port === MANIFEST_PORT) continue;
-    if (existingServeMap.has(service.port)) continue;
-    let target;
-    try {
-      const url = new URL(service.url);
-      const scheme = url.protocol === 'https:' ? 'https+insecure' : 'http';
-      target = `${scheme}://127.0.0.1:${service.port}`;
-    } catch {
-      target = `http://127.0.0.1:${service.port}`;
-    }
-    try {
-      execTailscale(`serve --bg --https=${service.port} ${quoteShell(target)}`);
-      activeAutoPublishedPorts.push(service.port);
-      count += 1;
-    } catch (e) {
-      console.error(`Tailscale Serve setup skipped for ${service.title || `:${service.port}`}: ${e.message}`);
+async function syncTailscaleServeServices({ showAll = false, dryRun = false, quiet = false, graceMs = 5 * 60 * 1000 } = {}) {
+  const existingRoutes = await getTailscaleServeRoutes();
+  const loaded = loadConfig();
+  if (loaded.error && !quiet) console.error(`Config ignored (${loaded.file}): ${loaded.error}`);
+  const scanned = await scanLocalSS({ showAll });
+  const services = applyServiceConfig(scanned, loaded.config, { forPublish: true })
+    .filter(service => service.port && service.port !== MANIFEST_PORT);
+  const plan = planServeReconciliation({
+    existingRoutes,
+    desiredServices: services,
+    state: readAutoPublishState(),
+    graceMs,
+  });
+
+  if (!quiet) {
+    for (const conflict of plan.conflicts) {
+      const wanted = conflict.desired ? `; wanted ${conflict.desired.target}` : '';
+      console.error(`Preserving existing route :${conflict.current.externalPort}${conflict.current.path} -> ${conflict.current.target}${wanted}${conflict.reason ? ` (${conflict.reason})` : ''}`);
     }
   }
-  writeAutoPublishedPorts(activeAutoPublishedPorts);
-  if (count > 0) console.log(`Tailscale Serve enabled for ${count} local service(s).`);
-  return count;
+  if (dryRun) return { plan, services };
+
+  const removed = [];
+  for (const route of plan.remove) {
+    try {
+      execTailscale(['serve', `--${route.externalScheme || 'https'}=${route.externalPort}`, 'off']);
+      removed.push(route);
+    } catch (error) {
+      plan.nextState.routes.push(route);
+      if (!quiet) console.error(`Could not remove owned route :${route.externalPort}: ${error.message}`);
+    }
+  }
+  const created = [];
+  for (const route of plan.create) {
+    try {
+      execTailscale(['serve', '--bg', `--https=${route.externalPort}`, route.target]);
+      created.push(route);
+    } catch (error) {
+      plan.nextState.routes = plan.nextState.routes.filter(owned => owned.externalPort !== route.externalPort);
+      if (!quiet) console.error(`Tailscale Serve setup skipped for :${route.externalPort}: ${error.message}`);
+    }
+  }
+  writeAutoPublishState(plan.nextState);
+  if (!quiet && (created.length > 0 || removed.length > 0)) {
+    console.log(`Tailscale Serve reconciled: ${created.length} added or updated, ${removed.length} removed.`);
+  }
+  return { plan, services };
 }
 
 function removeTailscaleServe({ removeAutoPublished = false } = {}) {
   if (removeAutoPublished) {
-    for (const port of readAutoPublishedPorts()) {
-      try { execTailscale(`serve --https=${port} off`); } catch {}
-      try { execTailscale(`serve --http=${port} off`); } catch {}
+    let existingRoutes = [];
+    try {
+      existingRoutes = parseTailscaleServeStatusJSON(execTailscale(['serve', 'status', '--json']));
+      if (existingRoutes.length === 0) existingRoutes = parseTailscaleServeStatus(execTailscale(['serve', 'status']));
+    } catch {}
+    const plan = planServeReconciliation({
+      existingRoutes,
+      desiredServices: [],
+      state: readAutoPublishState(),
+      graceMs: 0,
+    });
+    const remaining = [];
+    for (const route of plan.remove) {
+      try {
+        execTailscale(['serve', `--${route.externalScheme || 'https'}=${route.externalPort}`, 'off']);
+      } catch {
+        remaining.push(route);
+      }
     }
-    writeAutoPublishedPorts([]);
+    writeAutoPublishState({ version: 2, routes: remaining });
   }
   try {
-    execTailscale(`serve --https=${MANIFEST_PORT} off`);
-  } catch {}
-  try {
-    execTailscale(`serve --http=${MANIFEST_PORT} off`);
-    console.log('Tailscale Serve disabled.');
+    const routes = parseTailscaleServeStatusJSON(execTailscale(['serve', 'status', '--json']));
+    const manifestRoute = routes.find(route =>
+      route.externalPort === MANIFEST_PORT &&
+      route.path === '/' &&
+      route.target === `http://127.0.0.1:${MANIFEST_PORT}`);
+    if (manifestRoute) {
+      execTailscale(['serve', `--${manifestRoute.externalScheme || 'https'}=${MANIFEST_PORT}`, 'off']);
+      console.log('Tailscale Serve disabled.');
+    }
   } catch {}
 }
 
@@ -710,10 +836,12 @@ function setupAutostart({ autoPublish = false } = {}) {
     </dict>
     <key>ProgramArguments</key>
     <array>
-        ${info.nodeCommand.map(arg => `<string>${arg}</string>`).join('\n        ')}
-        <string>${info.binPath}</string>
-        ${serveArgs.map(arg => `<string>${arg}</string>`).join('\n        ')}
+        ${info.nodeCommand.map(arg => `<string>${xmlEscape(arg)}</string>`).join('\n        ')}
+        <string>${xmlEscape(info.binPath)}</string>
+        ${serveArgs.map(arg => `<string>${xmlEscape(arg)}</string>`).join('\n        ')}
     </array>
+    <key>AssociatedBundleIdentifiers</key>
+    <array><string>com.zeul.web-finder</string></array>
     <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><true/>
     <key>StandardOutPath</key><string>/tmp/web-finder-serve.log</string>
@@ -782,7 +910,7 @@ start_service() {
 Description=web-finder manifest server
 
 [Service]
-ExecStart=${info.nodeCommand.join(' ')} ${info.binPath} ${serveArgs.join(' ')}
+ExecStart=${info.nodeCommand.concat([info.binPath], serveArgs).map(quoteSystemdArg).join(' ')}
 Restart=on-failure
 RestartSec=5
 
@@ -796,9 +924,10 @@ WantedBy=default.target
       execSync('systemctl --user restart web-finder-serve', { encoding: 'utf8' });
       console.log('Autostart enabled (systemd).');
     }
-    setupTailscaleServe({ autoPublish });
+    return setupTailscaleServe({ autoPublish });
   } catch (e) {
     console.error('Autostart setup failed:', e.message);
+    return false;
   }
 }
 
@@ -850,6 +979,7 @@ if (command === 'version' || args.includes('--version') || args.includes('-v')) 
 }
 
 if (command === 'update' || args.includes('--update') || args.includes('-u')) {
+  const preserveAutoPublish = autoPublishMode || (!args.includes('--passive') && autostartUsesAutoPublish());
   if (isGitCheckout()) {
     console.log('Updating web-finder CLI...');
     try {
@@ -909,18 +1039,17 @@ if (command === 'update' || args.includes('--update') || args.includes('-u')) {
     process.exit(1);
   }
 
-  if (autoPublishMode && !ensureLinuxAutoPublishPermission()) process.exit(1);
+  if (preserveAutoPublish && !ensureLinuxAutoPublishPermission()) process.exit(1);
 
   // Set up autostart as part of every update
-  setupAutostart({ autoPublish: autoPublishMode });
+  if (!setupAutostart({ autoPublish: preserveAutoPublish })) process.exit(1);
 
   process.exit(0);
 }
 
 if (command === 'start') {
   if (autoPublishMode && !ensureLinuxAutoPublishPermission()) process.exit(1);
-  setupAutostart({ autoPublish: autoPublishMode });
-  process.exit(0);
+  process.exit(setupAutostart({ autoPublish: autoPublishMode }) ? 0 : 1);
 }
 
 if (command === 'stop') {
@@ -928,8 +1057,68 @@ if (command === 'stop') {
   process.exit(0);
 }
 
+if (command === 'config') {
+  const loaded = loadConfig();
+  console.log(`Config: ${loaded.file}`);
+  if (loaded.error) {
+    console.error(`Invalid config: ${loaded.error}`);
+    process.exit(1);
+  }
+  console.log(JSON.stringify(loaded.config, null, 2));
+  process.exit(0);
+}
+
+if (command === 'qr' || command === 'publisher-url') {
+  const url = publisherURL();
+  if (!url) {
+    console.error('Could not determine this device\'s Tailscale publisher URL. Check `tailscale status`.');
+    process.exit(1);
+  }
+  console.log(url);
+  if (command === 'qr' && hasCommand('qrencode') && process.stdout.isTTY) {
+    try { execSync(`qrencode -t ANSIUTF8 ${quoteShell(url)}`, { stdio: 'inherit' }); } catch {}
+  } else if (command === 'qr' && process.stdout.isTTY) {
+    console.log('Install `qrencode` to print a scannable terminal QR code. You can paste the URL into the iPhone app now.');
+  }
+  process.exit(0);
+}
+
+if (command === 'reconcile') {
+  const apply = args.includes('--apply');
+  const graceIdx = args.indexOf('--grace-seconds');
+  const graceSeconds = graceIdx >= 0 ? Number(args[graceIdx + 1]) : (apply ? 300 : 0);
+  if (!Number.isFinite(graceSeconds) || graceSeconds < 0) {
+    console.error('--grace-seconds must be a non-negative number');
+    process.exit(1);
+  }
+  syncTailscaleServeServices({ showAll: args.includes('--debug'), dryRun: !apply, graceMs: graceSeconds * 1000 })
+    .then(({ plan, services }) => {
+      const summary = {
+        mode: apply ? 'applied' : 'dry-run',
+        detectedServices: services.length,
+        create: plan.create,
+        remove: plan.remove,
+        conflicts: plan.conflicts,
+        preserved: plan.preserved,
+      };
+      if (args.includes('--json') || args.includes('-j')) {
+        console.log(JSON.stringify(summary, null, 2));
+      } else {
+        console.log(`Reconcile ${summary.mode}: ${summary.detectedServices} services, ${plan.create.length} add/update, ${plan.remove.length} remove, ${plan.conflicts.length} conflicts.`);
+        for (const route of plan.create) console.log(`  + :${route.externalPort}${route.path} -> ${route.target}`);
+        for (const route of plan.remove) console.log(`  - :${route.externalPort}${route.path} -> ${route.target}`);
+      }
+      process.exit(plan.conflicts.length > 0 ? 2 : 0);
+    })
+    .catch(error => {
+      console.error('Reconcile failed:', error.message);
+      process.exit(1);
+    });
+  return;
+}
+
 if (command === 'status' || command === 'diagnose') {
-  printStatus({ debug: command === 'diagnose' || args.includes('--debug') })
+  printStatus({ debug: command === 'diagnose' || args.includes('--debug'), json: args.includes('--json') || args.includes('-j') })
     .then(() => process.exit(0))
     .catch((e) => {
       console.error('Status failed:', e.message);
@@ -942,7 +1131,7 @@ if (args[0] === 'autostart') {
   const sub = args[1];
   if (sub === 'on' || sub === 'enable') {
     if (autoPublishMode && !ensureLinuxAutoPublishPermission()) process.exit(1);
-    setupAutostart({ autoPublish: autoPublishMode });
+    if (!setupAutostart({ autoPublish: autoPublishMode })) process.exit(1);
   } else if (sub === 'off' || sub === 'disable') {
     removeAutostart();
   } else {
@@ -962,14 +1151,23 @@ if (args[0] === 'serve') {
   const cacheMs = 15000;
   const staleKeepMs = 5 * 60 * 1000;
   let manifestCache = null;
-  let manifestCacheAt = 0;
+  let manifestLastRefreshAt = 0;
+  let manifestReducedSince = 0;
   let manifestRefresh = null;
+  let globalManifestCache = null;
+  let globalManifestLastRefreshAt = 0;
+  let globalManifestRefresh = null;
 
   async function buildManifest() {
     if (autoPublish && serveHost === '127.0.0.1' && !noTsServe) {
       await syncTailscaleServeServices({ showAll });
     }
-    const services = await scanLocalSS({ showAll, tailnetOnly: true });
+    const loaded = loadConfig();
+    const services = applyServiceConfig(
+      await scanLocalSS({ showAll, tailnetOnly: true }),
+      loaded.config,
+      { forPublish: true },
+    );
     return {
       version:  1,
       hostname: os.hostname(),
@@ -990,28 +1188,88 @@ if (args[0] === 'serve') {
         const now = Date.now();
         const oldCount = manifestCache?.services?.length || 0;
         const newCount = manifest.services.length;
-        if (manifestCache && newCount < oldCount && now - manifestCacheAt < staleKeepMs) {
-          manifestCacheAt = now;
-          return manifestCache;
+        manifestLastRefreshAt = now;
+        if (manifestCache && newCount < oldCount) {
+          if (!manifestReducedSince) manifestReducedSince = now;
+          if (now - manifestReducedSince < staleKeepMs) return manifestCache;
+        } else {
+          manifestReducedSince = 0;
         }
         manifestCache = manifest;
-        manifestCacheAt = now;
         return manifestCache;
       })
       .finally(() => { manifestRefresh = null; });
     return manifestRefresh;
   }
 
+  async function buildGlobalManifest() {
+    const [local, remote] = await Promise.all([buildManifest(), scanTailscale({ showAll })]);
+    let selfName = os.hostname();
+    let selfHost = '127.0.0.1';
+    try {
+      const status = JSON.parse(execTailscale(['status', '--json']));
+      selfName = status?.Self?.HostName || selfName;
+      selfHost = String(status?.Self?.DNSName || '').replace(/\.$/, '') ||
+        (status?.Self?.TailscaleIPs || []).find(candidate => !candidate.includes(':')) || selfHost;
+    } catch {}
+    const localServices = local.services.map(service => {
+      try {
+        const url = new URL(service.url);
+        if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') url.hostname = selfHost;
+        return { ...service, url: url.toString() };
+      } catch {
+        return service;
+      }
+    });
+    const devices = [{
+      name: selfName,
+      host: selfHost,
+      os: process.platform,
+      online: true,
+      services: localServices,
+    }].concat((remote.peers || []).map(peer => ({
+      name: peer.name,
+      host: peer.dnsName || peer.ip,
+      os: peer.os,
+      online: Boolean(peer.online),
+      services: (peer.services || []).map(service => ({
+        name: service.title,
+        port: service.port,
+        url: service.url,
+        ...(service.directoryListing ? { directoryListing: true } : {}),
+      })),
+    })));
+    return { version: 1, generatedAt: new Date().toISOString(), devices };
+  }
+
+  async function refreshGlobalManifestCache() {
+    if (globalManifestRefresh) return globalManifestRefresh;
+    globalManifestRefresh = buildGlobalManifest()
+      .then(manifest => {
+        globalManifestCache = manifest;
+        globalManifestLastRefreshAt = Date.now();
+        return manifest;
+      })
+      .finally(() => { globalManifestRefresh = null; });
+    return globalManifestRefresh;
+  }
+
   const server = http.createServer(async (req, res) => {
-    if (req.url !== MANIFEST_PATH) {
+    const requestPath = String(req.url || '').split('?')[0];
+    if (requestPath !== MANIFEST_PATH && requestPath !== GLOBAL_MANIFEST_PATH) {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('Not found\n');
       return;
     }
     try {
-      const manifest = (manifestCache && Date.now() - manifestCacheAt < cacheMs)
-        ? manifestCache
-        : await refreshManifestCache();
+      const isGlobal = requestPath === GLOBAL_MANIFEST_PATH;
+      const manifest = isGlobal
+        ? ((globalManifestCache && Date.now() - globalManifestLastRefreshAt < 30000)
+            ? globalManifestCache
+            : await refreshGlobalManifestCache())
+        : ((manifestCache && Date.now() - manifestLastRefreshAt < cacheMs)
+            ? manifestCache
+            : await refreshManifestCache());
       res.writeHead(200, {
         'Content-Type':                'application/json',
         'Access-Control-Allow-Origin': '*',
@@ -1027,6 +1285,10 @@ if (args[0] === 'serve') {
   server.listen(servePort, serveHost, () => {
     console.log(`web-finder manifest server listening on ${serveHost}:${servePort}`);
     console.log(`Endpoint: http://localhost:${servePort}${MANIFEST_PATH}`);
+    if (servePort === MANIFEST_PORT) {
+      const url = publisherURL();
+      if (url) console.log(`iPhone publisher URL: ${url}`);
+    }
     (async () => {
       if (serveHost === '127.0.0.1' && servePort === MANIFEST_PORT && !noTsServe) {
         setupTailscaleServe({ autoPublish });
@@ -1052,6 +1314,14 @@ Commands:
   web-finder start        Passive default: advertise existing Tailscale Serve mappings
   web-finder stop         Stop sharing this machine and disable autostart
   web-finder status       Check daemon, Tailscale Serve, MagicDNS, and version
+  web-finder reconcile --dry-run
+                          Preview safe auto-publish route cleanup
+  web-finder reconcile --apply
+                          Apply only WebFinder-owned route changes
+  web-finder reconcile --apply --grace-seconds 0
+                          Apply cleanup immediately (useful for controlled tests)
+  web-finder config       Show the service alias/exclusion config and path
+  web-finder qr           Print the iPhone publisher URL and a QR when qrencode is installed
   web-finder update       Update WebFinder and restart sharing
   web-finder version      Show version
 
@@ -1059,6 +1329,7 @@ Options:
   --json, -j          Output as JSON for apps/scripts
   --debug             Show noisy diagnostics, all open ports, and no-service peers
   --auto-publish      With start/serve, publish detected local web UIs via Tailscale Serve
+  --passive           With update, explicitly switch an existing publisher to passive mode
   --version, -v       Show version
   --help, -h          Show this help
 
@@ -1085,7 +1356,7 @@ const debugMode     = args.includes('--debug')     || args.includes('--all') || 
 const showAll       = debugMode;
 const jsonMode      = args.includes('--json')      || args.includes('-j');
 
-if (command && !['serve', 'autostart'].includes(command)) {
+if (command && !['serve', 'autostart', 'config', 'reconcile'].includes(command)) {
   console.error(`Unknown command: ${command}`);
   console.error('Run `web-finder --help` for usage.');
   process.exit(1);

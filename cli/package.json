@@ -1,17 +1,18 @@
 {
   "name": "web-finder",
-  "version": "1.3.10",
+  "version": "1.4.0",
   "description": "Find web interfaces published by WebFinder clients on your Tailscale devices",
   "bin": {
     "web-finder": "./bin/web-finder"
   },
   "scripts": {
-    "lint": "eslint scanner.js bin/web-finder",
-    "check": "npm run lint && node --check scanner.js && node --check bin/web-finder"
+    "lint": "eslint .",
+    "test": "node --test test/*.test.js",
+    "check": "npm run lint && npm test && node --check config.js && node --check scanner.js && node --check serve-state.js && node --check bin/web-finder"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.4.0",
-    "globals": "^17.6.0"
+    "eslint": "^10.9.1",
+    "globals": "^17.11.0"
   }
 }

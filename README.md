@@ -18,7 +18,7 @@ Menubar app for Tailscale users. It shows discovered web services at a glance, o
 
 ## iOS
 
-Discovers services published by WebFinder clients on your tailnet. One-time Tailscale OAuth setup. Install WebFinder on each Mac/Linux device you want to see, then run `web-finder start --auto-publish` there for the recommended setup.
+Discovers services published by WebFinder clients on your tailnet. Use a credential-free publisher URL or one-time Tailscale OAuth setup. Install WebFinder on each Mac/Linux device you want to see, then run `web-finder start --auto-publish` there for the recommended setup.
 
 [![Download on the App Store](https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg)](https://apps.apple.com/app/web-finder-for-tailscale/id6759476914)
 
@@ -72,6 +72,9 @@ web-finder start --auto-publish  # Recommended: publish detected local web UIs w
 web-finder start             # Passive default: only advertise existing Tailscale Serve mappings
 web-finder stop              # Stop sharing and disable autostart
 web-finder status            # Check daemon, Tailscale Serve, MagicDNS, and version
+web-finder status --json     # Structured health and route-drift diagnostics
+web-finder reconcile         # Safely preview WebFinder-owned Serve changes
+web-finder qr                # Print the credential-free iPhone publisher URL
 web-finder update            # Update WebFinder and restart sharing
 web-finder version           # Show version
 web-finder --json            # JSON output for apps/scripts
@@ -87,6 +90,8 @@ WebFinder for Tailscale is intentionally Tailscale-first:
 - Auto-publish is not the default. Plain `web-finder start` stays passive and only advertises local web UIs already exposed with Tailscale Serve.
 - On Linux, auto-publish may prompt to set the current Unix user as the local Tailscale operator so WebFinder can manage Tailscale Serve mappings without running as root.
 - `web-finder stop` removes the Tailscale Serve mappings WebFinder created in auto-publish mode.
+- Auto-publish records exact route ownership. It never overwrites an unowned conflict or removes a route changed outside WebFinder, and it waits through short service restarts before cleanup.
+- On iPhone, paste the URL from `web-finder qr` to discover through one publisher without creating Tailscale API credentials. OAuth discovery remains available.
 - Other clients fetch peer manifests instead of scanning peer ports.
 - Normal output hides protocol/API-only ports and peers with no services. Use `web-finder --debug` for the noisy view.
 

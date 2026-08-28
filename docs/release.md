@@ -37,7 +37,7 @@ web-finder update
 
 For polished macOS releases, sign and notarize the app before uploading it. You need a paid Apple Developer Program account and a `Developer ID Application` certificate installed in Keychain. The signing script auto-detects the certificate when exactly one is installed, or you can set `DEVELOPER_ID_APPLICATION` explicitly.
 
-The release script signs and notarizes when one notarization credential path is available:
+The release script requires signing and notarization credentials and refuses to publish an unsigned macOS archive:
 
 ```bash
 export DEVELOPER_ID_APPLICATION="Developer ID Application: Your Name (TEAMID)"

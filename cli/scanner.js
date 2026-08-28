@@ -5,6 +5,7 @@ const { exec } = require('child_process');
 const net   = require('net');
 const http  = require('http');
 const https = require('https');
+const { parseTailscaleServeStatusJSON } = require('./serve-state');
 
 const SCAN_PORTS = [
   80, 443,
@@ -118,7 +119,7 @@ const MAC_ONLY_SERVICES = {
 };
 
 // Ports that serve APIs/protocols, not web UIs (hidden unless --all)
-const NON_WEB_PORTS = new Set([22, 25, 53, 111, 5353, 11434]); // SSH, SMTP, DNS, portmapper, mDNS, Ollama API
+const NON_WEB_PORTS = new Set([22, 25, 53, 111, 631, 5353, 11434]); // SSH, SMTP, DNS, portmapper, CUPS, mDNS, Ollama API
 const DARWIN_NON_WEB_PORTS = new Set([5000]); // AirPlay Receiver
 
 function isMacOS(os) {
@@ -132,7 +133,8 @@ function isMacOS(os) {
  *  Shows ports with HTML but no <title> (SPAs, auth pages) using fallback names. */
 async function fetchService(host, port, { isDarwin = false, showAll = false } = {}) {
   const schemes = HTTPS_FIRST_PORTS.has(port) ? ['https', 'http'] : ['http', 'https'];
-  let openPortUrl = null;
+  let htmlUrl = null;
+  let respondedUrl = null;
 
   for (const scheme of schemes) {
     const url    = `${scheme}://${host}:${port}`;
@@ -140,23 +142,28 @@ async function fetchService(host, port, { isDarwin = false, showAll = false } = 
     if (!result) continue;  // connection failed, try next scheme
     if (result.redirectPort && result.redirectPort !== port) return null;
     if (result.directoryListing && !showAll) return null;
-    if (result.title) return { title: result.title, url: result.url || url, directoryListing: result.directoryListing };
-    // Port is open but no title - remember URL for fallback
-    if (result.noTitle) openPortUrl = openPortUrl || result.url;
-    if (result.responded) openPortUrl = openPortUrl || url;
+    if (result.title) return { title: result.title, url: result.url || url, directoryListing: result.directoryListing, webLike: true };
+    // HTML without a title is still a web UI. A JSON/API/error response is not.
+    if (result.noTitle) htmlUrl = htmlUrl || result.url;
+    if (result.responded) respondedUrl = respondedUrl || url;
   }
 
-  // Port open but no <title> (SPA, auth-protected, API endpoint)
-  if (openPortUrl) {
-    const lookup = isDarwin ? { ...KNOWN_SERVICES, ...MAC_ONLY_SERVICES } : KNOWN_SERVICES;
-    return { title: lookup[port] ?? `Port ${port}`, url: openPortUrl };
+  const lookup = isDarwin ? { ...KNOWN_SERVICES, ...MAC_ONLY_SERVICES } : KNOWN_SERVICES;
+  if (htmlUrl) {
+    return { title: lookup[port] ?? `Port ${port}`, url: htmlUrl, webLike: true };
+  }
+
+  // Keep a known UI even if auth returns an empty/error response. Unknown API and
+  // browser debugging sockets are visible only with --all and never auto-published.
+  if (respondedUrl && lookup[port]) {
+    return { title: lookup[port], url: respondedUrl, webLike: true };
   }
 
   // Port closed - only show with --all
+  if (!showAll && !respondedUrl) return null;
   if (!showAll) return null;
-  const lookup = isDarwin ? { ...KNOWN_SERVICES, ...MAC_ONLY_SERVICES } : KNOWN_SERVICES;
   const scheme = HTTPS_FIRST_PORTS.has(port) ? 'https' : 'http';
-  return { title: lookup[port] ?? `Port ${port}`, url: `${scheme}://${host}:${port}` };
+  return { title: lookup[port] ?? `Port ${port}`, url: respondedUrl ?? `${scheme}://${host}:${port}`, webLike: false };
 }
 
 /** Fetch URL, detect redirects to different ports on same host.
@@ -166,7 +173,7 @@ async function fetchService(host, port, { isDarwin = false, showAll = false } = 
  *    { noTitle: true, url } - HTTP 200 with HTML but no <title> (SPA/auth page)
  *    { responded: true }   - port open but non-HTML or HTTP 4xx/5xx
  *    null                  - connection failed (port closed/timeout) */
-function fetchWithRedirect(urlStr) {
+function fetchWithRedirect(urlStr, redirectCount = 0) {
   return new Promise((resolve) => {
     const mod = urlStr.startsWith('https') ? https : http;
     let buf = '';
@@ -204,11 +211,15 @@ function fetchWithRedirect(urlStr) {
           const redirPort = parseInt(loc.port) || (loc.protocol === 'https:' ? 443 : 80);
           const srcPort = parseInt(srcUrl.port) || (srcUrl.protocol === 'https:' ? 443 : 80);
           res.destroy();
-          if (loc.hostname === srcUrl.hostname && redirPort !== srcPort) {
+          if (loc.hostname !== srcUrl.hostname) {
+            done({ responded: true });
+          } else if (redirPort !== srcPort) {
             done({ redirectPort: redirPort });
-          } else {
+          } else if (redirectCount < 5) {
             // Same-port path redirect — follow it
-            fetchWithRedirect(loc.toString()).then(done);
+            fetchWithRedirect(loc.toString(), redirectCount + 1).then(done);
+          } else {
+            done({ responded: true });
           }
           return;
         } catch {}
@@ -387,9 +398,8 @@ async function scanGateway({ showAll = false } = {}) {
   if (found.length === 0) return null;
   // Detect hardware model (e.g. "UniFi Express") then fall back to ISP, page title, etc.
   const model = await detectUnifiModel(ip);
-  const isp = await getISPName();
   const realTitle = found.find(s => !s.title.startsWith('Port ') && s.title !== 'Admin Page')?.title;
-  const name = model || (isp ? `${isp} Modem` : null) || realTitle || 'Gateway';
+  const name = model || realTitle || 'Gateway';
   // For UniFi devices, only keep port 443 (port 80 redirects, 8080 is device inform)
   let finalServices = found;
   if (model) {
@@ -421,23 +431,6 @@ function detectUnifiModel(host) {
         }
       });
       res.on('end', () => resolve(null));
-    });
-    req.on('error', () => resolve(null));
-    req.on('timeout', () => { req.destroy(); resolve(null); });
-  });
-}
-
-async function getISPName() {
-  return new Promise((resolve) => {
-    const req = https.get('https://ipinfo.io/json', { timeout: 3000 }, (res) => {
-      let buf = '';
-      res.on('data', (c) => { buf += c; });
-      res.on('end', () => {
-        try {
-          const org = JSON.parse(buf).org || '';
-          resolve(org.replace(/^AS\d+\s+/, '') || null);
-        } catch { resolve(null); }
-      });
     });
     req.on('error', () => resolve(null));
     req.on('timeout', () => { req.destroy(); resolve(null); });
@@ -489,7 +482,8 @@ async function scanTailscale({ showAll = false } = {}) {
       const dnsName = rawDNS || null;
       const dn   = rawDNS.split('.')[0] || '';
       const name = (!hn || hn.toLowerCase() === 'localhost') ? (dn || 'unknown') : hn.replace(/\..*$/, '');
-      const ip   = (peer.TailscaleIPs || [])[0];
+      const ips = peer.TailscaleIPs || [];
+      const ip = ips.find(candidate => !candidate.includes(':')) || ips[0];
       return { name, ip, dnsName: dnsName || ip, online: peer.Online || false, os: peer.OS || null };
     })
     .filter(p => p.ip);
@@ -547,62 +541,65 @@ async function scanTailscale({ showAll = false } = {}) {
 
 const MANIFEST_PORT    = 9321;
 const MANIFEST_PATH    = '/.well-known/web-finder.json';
-const LOOPBACK_ADDRS   = new Set(['127.0.0.1', '127.0.0.54', '::1']);
-
+const GLOBAL_MANIFEST_PATH = '/.well-known/web-finder-global.json';
 /**
- * Parse `ss -tlnp` output and return all ports that are network-accessible
- * (bound to 0.0.0.0, ::, or a specific non-loopback address).
+ * Parse `ss -tlnp` output and return listening TCP ports. Loopback listeners
+ * are included because Tailscale Serve intentionally proxies to localhost.
  * Returns: [{ port, process }]
  */
 async function getListeningPortsSS() {
   const out = await execPromise('ss -tlnp --no-header 2>/dev/null');
   if (!out) return [];
 
-  const portMap = new Map(); // port -> { process, accessible }
+  const portMap = new Map(); // port -> { process }
   for (const line of out.split('\n')) {
     const m = line.match(/LISTEN\s+\d+\s+\d+\s+([\d.:[\]*]+):(\d+)\s/);
     if (!m) continue;
-    const addr = m[1].replace(/[[\]]/g, '');
     const port = parseInt(m[2]);
     if (!port) continue;
-
-    const isLoopback  = LOOPBACK_ADDRS.has(addr);
-    const isBindAll   = addr === '0.0.0.0' || addr === '::' || addr === '*';
-    const accessible  = !isLoopback || isBindAll;
 
     const procM = line.match(/users:\(\("([^"]+)"/);
     const proc  = procM ? procM[1] : null;
 
     if (!portMap.has(port)) {
-      portMap.set(port, { process: proc, accessible });
-    } else if (accessible) {
+      portMap.set(port, { process: proc });
+    } else {
       const entry = portMap.get(port);
-      entry.accessible = true;
       if (!entry.process && proc) entry.process = proc;
     }
   }
 
-  return Array.from(portMap.entries())
-    .filter(([, info]) => info.accessible)
-    .map(([port, info]) => ({ port, process: info.process }));
+  return Array.from(portMap.entries()).map(([port, info]) => ({ port, process: info.process }));
+}
+
+async function getListeningPortsLsof() {
+  const out = await execPromise('lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null');
+  if (!out) return [];
+  const portMap = new Map();
+  for (const line of out.split('\n').slice(1)) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length < 9) continue;
+    const match = line.match(/:(\d+)\s+\(LISTEN\)\s*$/);
+    const port = match ? parseInt(match[1]) : null;
+    if (!port || port > 65535) continue;
+    if (!portMap.has(port)) portMap.set(port, { port, process: parts[0] || null });
+  }
+  return Array.from(portMap.values());
 }
 
 /**
  * Scan the local machine using `ss` to discover all listening ports dynamically.
- * Linux-only. Falls back to scanLocal on macOS.
+ * Uses ss on Linux and lsof on macOS.
  * In tailnetOnly mode, only returns services already mapped by Tailscale Serve.
  * Returns: [{ title, host, port, url }]
  */
 async function scanLocalSS({ showAll = false, tailnetOnly = false } = {}) {
   if (tailnetOnly) return scanTailscaleServedLocal({ showAll });
 
-  if (process.platform !== 'linux') {
-    const services = await scanLocal({ showAll });
-    return services;
-  }
-
   const [listeningPorts, tsServeMap, zensicalHints] = await Promise.all([
-    getListeningPortsSS(),
+    process.platform === 'linux' ? getListeningPortsSS()
+      : process.platform === 'darwin' ? getListeningPortsLsof()
+        : Promise.resolve([]),
     getTailscaleServeMap(),
     getZensicalHints(),
   ]);
@@ -611,14 +608,14 @@ async function scanLocalSS({ showAll = false, tailnetOnly = false } = {}) {
   const services = await Promise.all(listeningPorts.map(async ({ port, process: procName }) => {
     // If we have a zensical project name hint, use it (better than ss process names)
     const hint = zensicalHints[port];
-    const svc = await fetchService('127.0.0.1', port, { isDarwin: false, showAll: true });
+    const svc = await fetchService('127.0.0.1', port, { isDarwin: process.platform === 'darwin', showAll });
     if (!svc) {
       // Port open but fetchService got nothing - use hint if available
       if (hint) return { title: hint, host: '127.0.0.1', port, url: `http://127.0.0.1:${port}` };
       return null;
     }
     // Use zensical hint or ss process name when fetchService returns a generic "Port N"
-    const title = svc.title.startsWith('Port ') ? (hint || procName || svc.title) : svc.title;
+    const title = svc.title.startsWith('Port ') && svc.webLike ? (hint || procName || svc.title) : svc.title;
 
     // For manifests, advertise the Tailscale Serve HTTPS URL. For local CLI
     // output, keep the directly reachable localhost URL.
@@ -633,7 +630,7 @@ async function scanLocalSS({ showAll = false, tailnetOnly = false } = {}) {
       } catch {}
     }
 
-    return { title, host: '127.0.0.1', port: (tailnetOnly && extPort) ? extPort : port, url, directoryListing: svc.directoryListing };
+    return { title, host: '127.0.0.1', port: (tailnetOnly && extPort) ? extPort : port, url, directoryListing: svc.directoryListing, webLike: svc.webLike };
   }));
 
   let result = dedup(services.filter(Boolean))
@@ -652,6 +649,7 @@ async function scanLocalSS({ showAll = false, tailnetOnly = false } = {}) {
     result = result.filter(s => {
       if (NON_WEB_PORTS.has(s.port)) return false;
       if (isDirectoryListingService(s)) return false;
+      if (s.webLike === false) return false;
       // Exclude generic "Port N" fallbacks — no real web UI, just an open port
       if (s.title === `Port ${s.port}`) return false;
       return true;
@@ -740,10 +738,16 @@ function parseTailscaleServeStatus(out) {
   return entries;
 }
 
+async function getTailscaleServeRoutes() {
+  const json = await execTailscale('serve status --json 2>/dev/null');
+  const parsed = parseTailscaleServeStatusJSON(json);
+  if (parsed.length > 0 || String(json || '').trim() === '{}') return parsed;
+  return parseTailscaleServeStatus(await execTailscale('serve status 2>/dev/null'));
+}
+
 async function getTailscaleServeMap() {
   const map = new Map(); // localPort -> externalPort
-  const out = await execTailscale('serve status 2>/dev/null');
-  for (const entry of parseTailscaleServeStatus(out)) {
+  for (const entry of await getTailscaleServeRoutes()) {
     if (entry.backendPort) map.set(entry.backendPort, entry.externalPort);
   }
   return map;
@@ -786,76 +790,91 @@ async function scanTailscaleServedLocal({ showAll = false } = {}) {
   return result;
 }
 
-/**
- * Fetch the web-finder manifest from a peer.
- * Returns parsed manifest object or null if not available.
- */
-function fetchManifest(host, fallbackHost = null) {
-  return new Promise((resolve) => {
-    const candidates = [
-      host && { scheme: 'https', connectHost: host },
-      host && { scheme: 'http', connectHost: host },
-      // Tailscale Serve requires the MagicDNS hostname for HTTPS SNI/Host,
-      // but Linux peers may have accept-dns disabled. Connect to the IP while
-      // preserving the DNSName at the TLS/HTTP layer.
-      host && fallbackHost && { scheme: 'https', connectHost: fallbackHost, virtualHost: host },
-      fallbackHost && { scheme: 'http', connectHost: fallbackHost },
-      fallbackHost && { scheme: 'https', connectHost: fallbackHost },
-    ].filter(Boolean);
-    const seen = new Set();
-    const endpoints = candidates.filter(candidate => {
-        const key = `${candidate.scheme}://${candidate.connectHost}:${MANIFEST_PORT}|${candidate.virtualHost || ''}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-
-    const tryEndpoint = (idx) => {
-      if (idx >= endpoints.length) { resolve(null); return; }
-      const endpoint = endpoints[idx];
-      const mod = endpoint.scheme === 'https' ? https : http;
-      const options = {
-        protocol: `${endpoint.scheme}:`,
-        hostname: endpoint.connectHost,
-        port: MANIFEST_PORT,
-        path: MANIFEST_PATH,
-        timeout: 3500,
-        rejectUnauthorized: false,
-        headers: {},
-      };
-      if (endpoint.virtualHost) {
-        options.servername = endpoint.virtualHost;
-        options.headers.Host = `${endpoint.virtualHost}:${MANIFEST_PORT}`;
-      }
-      const req = mod.get(options, (res) => {
-        if (res.statusCode !== 200) { res.resume(); tryEndpoint(idx + 1); return; }
-        let buf = '';
-        res.on('data', (c) => {
-          buf += c;
-          if (buf.length > 65536) {
-            req.destroy();
-            resolve(null);
-          }
-        });
-        res.on('end', () => {
-          try {
-            const manifest = JSON.parse(buf);
-            if (endpoint.virtualHost) manifest.usedIpSniFallback = true;
-            resolve(manifest);
-          } catch { tryEndpoint(idx + 1); }
-        });
-      });
-      req.on('error',   () => tryEndpoint(idx + 1));
-      req.on('timeout', () => { req.destroy(); tryEndpoint(idx + 1); });
-    };
-
-    tryEndpoint(0);
+function validateManifest(manifest) {
+  if (!manifest || manifest.version !== 1 || !Array.isArray(manifest.services) || manifest.services.length > 256) {
+    return null;
+  }
+  const services = manifest.services.flatMap(service => {
+    if (typeof service?.name !== 'string' || service.name.length === 0 || service.name.length > 200) return [];
+    if (!Number.isInteger(service.port) || service.port <= 0 || service.port > 65535) return [];
+    if (typeof service.url !== 'string' || service.url.length > 2048) return [];
+    try {
+      const url = new URL(service.url);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return [];
+    } catch {
+      return [];
+    }
+    return [{
+      name: service.name,
+      port: service.port,
+      url: service.url,
+      ...(service.directoryListing ? { directoryListing: true } : {}),
+    }];
   });
+  return { version: 1, hostname: String(manifest.hostname || '').slice(0, 255), services };
+}
+
+function fetchManifestEndpoint(endpoint) {
+  return new Promise((resolve, reject) => {
+    const mod = endpoint.scheme === 'https' ? https : http;
+    const options = {
+      protocol: `${endpoint.scheme}:`,
+      hostname: endpoint.connectHost,
+      port: MANIFEST_PORT,
+      path: MANIFEST_PATH,
+      timeout: 3500,
+      rejectUnauthorized: endpoint.scheme === 'https',
+      headers: { Accept: 'application/json' },
+    };
+    if (endpoint.virtualHost) {
+      options.servername = endpoint.virtualHost;
+      options.headers.Host = `${endpoint.virtualHost}:${MANIFEST_PORT}`;
+    }
+    const req = mod.get(options, (res) => {
+      if (res.statusCode !== 200) { res.resume(); reject(new Error(`HTTP ${res.statusCode}`)); return; }
+      let buf = '';
+      res.on('data', chunk => {
+        buf += chunk;
+        if (buf.length > 65536) req.destroy(new Error('manifest too large'));
+      });
+      res.on('end', () => {
+        try {
+          const manifest = validateManifest(JSON.parse(buf));
+          if (!manifest) throw new Error('invalid manifest');
+          if (endpoint.virtualHost) manifest.usedIpSniFallback = true;
+          resolve(manifest);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+  });
+}
+
+/** Fetch and validate the first responsive peer manifest. */
+function fetchManifest(host, fallbackHost = null) {
+  const candidates = [
+    host && { scheme: 'https', connectHost: host },
+    host && { scheme: 'http', connectHost: host },
+    host && fallbackHost && { scheme: 'https', connectHost: fallbackHost, virtualHost: host },
+    fallbackHost && { scheme: 'http', connectHost: fallbackHost },
+  ].filter(Boolean);
+  const seen = new Set();
+  const endpoints = candidates.filter(candidate => {
+    const key = `${candidate.scheme}://${candidate.connectHost}:${MANIFEST_PORT}|${candidate.virtualHost || ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return Promise.any(endpoints.map(fetchManifestEndpoint)).catch(() => null);
 }
 
 module.exports = {
   scanLocal, scanLocalSS, scanTailscale, scanGateway,
   scanPorts, scanPortsBatched, checkPort,
-  getListeningPortsSS, getTailscaleServeMap, parseTailscaleServeStatus, fetchManifest,
-  SCAN_PORTS, MANIFEST_PORT, MANIFEST_PATH,
+  getListeningPortsSS, getListeningPortsLsof, getTailscaleServeMap, getTailscaleServeRoutes,
+  parseTailscaleServeStatus, parseTailscaleServeStatusJSON, validateManifest, fetchManifest,
+  SCAN_PORTS, MANIFEST_PORT, MANIFEST_PATH, GLOBAL_MANIFEST_PATH,
 };

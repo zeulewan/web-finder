@@ -53,7 +53,7 @@
 
   <h2>What the app does</h2>
   <ul>
-    <li>Connects to the Tailscale API using OAuth credentials you provide to discover devices on your tailnet</li>
+    <li>Connects to the Tailscale API using OAuth credentials you provide, or to a publisher URL you configure, to discover devices on your tailnet</li>
     <li>Fetches WebFinder manifests from devices where WebFinder is installed and running</li>
     <li>Scans local services only on the device running WebFinder</li>
     <li>Opens URLs in your default browser when you tap a service</li>
@@ -61,7 +61,7 @@
 
   <h2>Data storage</h2>
   <ul>
-    <li>Your Tailscale OAuth Client ID and Client Secret are stored locally on your device</li>
+    <li>Your Tailscale OAuth Client Secret is stored locally in the iOS Keychain; the Client ID and optional publisher URL remain in app preferences</li>
     <li>No data is sent to any third-party server, analytics service, or tracking platform</li>
     <li>No usage data, crash reports, or telemetry of any kind is collected</li>
   </ul>

@@ -74,12 +74,11 @@ fi
 # Check for git
 command -v git &>/dev/null || error "git is required. Install it and re-run."
 
-# Check for Node.js
-if ! command -v node &>/dev/null; then
-    command -v apt-get &>/dev/null || error "Node.js is required. Install Node.js LTS for your distro and re-run."
-    warn "Node.js not found. Installing via NodeSource..."
-    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+# Check for a supported Node.js without piping remote scripts into a root shell.
+command -v node &>/dev/null || error "Node.js 20 or newer is required. Install your distro's Node.js LTS package and re-run."
+NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
+if ! [[ "$NODE_MAJOR" =~ ^[0-9]+$ ]] || [ "$NODE_MAJOR" -lt 20 ]; then
+    error "Node.js 20 or newer is required (found $(node --version)). Upgrade Node.js and re-run."
 fi
 
 NODE_VER=$(node --version)

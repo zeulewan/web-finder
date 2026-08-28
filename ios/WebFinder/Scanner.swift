@@ -4,11 +4,12 @@ import Network
 // MARK: - Models
 
 struct WebService: Identifiable, Codable {
-    let id = UUID()
     let title: String
     let port: Int
     let url: URL
     let isHTTPS: Bool
+
+    var id: String { "\(title)|\(port)|\(url.absoluteString)" }
 
     enum CodingKeys: String, CodingKey {
         case title, port, url, isHTTPS
@@ -16,7 +17,6 @@ struct WebService: Identifiable, Codable {
 }
 
 struct Device: Identifiable, Codable {
-    let id = UUID()
     let name: String
     let ip: String
     let isLocal: Bool
@@ -25,6 +25,8 @@ struct Device: Identifiable, Codable {
     let online: Bool
     var services: [WebService]
     var manifestUnavailable: Bool = false
+
+    var id: String { "\(name)|\(ip)" }
 
     enum CodingKeys: String, CodingKey {
         case name, ip, isLocal, isGateway, os, online, services
@@ -114,6 +116,8 @@ enum Scanner {
 
     static let MANIFEST_PORT = 9321
     static let MANIFEST_PATH = "/.well-known/web-finder.json"
+    static let GLOBAL_MANIFEST_PATH = "/.well-known/web-finder-global.json"
+    private static let maxManifestBytes = 65_536
 
     // Per-scan URLSession — created fresh for each scan and invalidated when done.
     // This ensures connections from previous scans are properly cleaned up.
@@ -148,6 +152,11 @@ enum Scanner {
         dlog("tailscaleStatus done: \(status != nil ? "ok" : "nil"), error: \(apiError ?? "none")")
 
         guard let status else {
+            if let published = await scanPublisher(showAll: showAll) {
+                var devices = published
+                if let gateway = await gatewayResult { devices.append(gateway) }
+                return (devices, nil)
+            }
             return ([], apiError)
         }
 
@@ -172,7 +181,7 @@ enum Scanner {
 
         let peers: [PeerInfo] = devicesArray.compactMap { device in
             guard let addresses = device["addresses"] as? [String],
-                  let ip = addresses.first else { return nil }
+                  let ip = addresses.first(where: { !$0.contains(":") }) ?? addresses.first else { return nil }
 
             let hostname = device["hostname"] as? String ?? ""
             let rawDNS = ((device["name"] as? String) ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "."))
@@ -286,7 +295,7 @@ enum Scanner {
         // A cold Tailscale tunnel can take several seconds to establish on iOS.
         // Let URLSession wait for the VPN path instead of failing immediately.
         config.waitsForConnectivity = true
-        let session = URLSession(configuration: config, delegate: InsecureTLSDelegate.shared, delegateQueue: nil)
+        let session = URLSession(configuration: config, delegate: SafeRedirectDelegate.shared, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
 
         // Race DNS/HTTPS and IP/HTTP candidates together. Sequential attempts made
@@ -296,18 +305,28 @@ enum Scanner {
             if Task.isCancelled { return nil }
             if let data = await fetchManifestData(candidates: candidates, session: session, timeout: timeout),
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let svcs = json["services"] as? [[String: Any]] {
+               json["version"] as? Int == 1,
+               let svcs = json["services"] as? [[String: Any]], svcs.count <= 256 {
                 return svcs.compactMap { svc -> WebService? in
-                    guard let name = svc["name"] as? String,
+                    guard let rawName = svc["name"] as? String,
                           let port = svc["port"] as? Int,
+                          (1...65_535).contains(port),
                           let urlStr = svc["url"] as? String,
-                          let origURL = URL(string: urlStr) else { return nil }
+                          urlStr.count <= 2_048,
+                          let origURL = URL(string: urlStr),
+                          let scheme = origURL.scheme?.lowercased(),
+                          scheme == "http" || scheme == "https" else { return nil }
+                    let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !name.isEmpty, name.count <= 200 else { return nil }
                     if !showAll && isDirectoryListingTitle(name) { return nil }
-                    let scheme = origURL.scheme ?? "http"
                     // HTTPS services need the DNS name (TLS certs are issued for .ts.net)
                     let host = scheme == "https" ? dnsName : ip
-                    let path = origURL.path.isEmpty || origURL.path == "/" ? "" : origURL.path
-                    guard let svcURL = URL(string: "\(scheme)://\(host):\(port)\(path)") else { return nil }
+                    var components = URLComponents(url: origURL, resolvingAgainstBaseURL: false)
+                    components?.host = host
+                    components?.port = port
+                    components?.user = nil
+                    components?.password = nil
+                    guard let svcURL = components?.url else { return nil }
                     return WebService(title: name, port: port, url: svcURL, isHTTPS: scheme == "https")
                 }
             }
@@ -331,7 +350,9 @@ enum Scanner {
                         request.timeoutInterval = timeout
                         request.setValue("application/json", forHTTPHeaderField: "Accept")
                         let (data, response) = try await session.data(for: request)
-                        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+                        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                              data.count <= maxManifestBytes,
+                              http.expectedContentLength <= 0 || http.expectedContentLength <= Int64(maxManifestBytes) else { return nil }
                         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                               json["services"] is [[String: Any]] else { return nil }
                         return data
@@ -359,9 +380,87 @@ enum Scanner {
                normalized.range(of: #"^Directory listing for\s+/.*$"#, options: options) != nil
     }
 
+    /// Credential-free discovery through one trusted WebFinder publisher on the tailnet.
+    static func scanPublisher(showAll: Bool = false) async -> [Device]? {
+        let raw = CredentialStore.publisherURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty, var components = URLComponents(string: raw) else { return nil }
+        guard components.scheme == "http" || components.scheme == "https" else { return nil }
+        if components.path.isEmpty || components.path == "/" {
+            components.path = GLOBAL_MANIFEST_PATH
+        }
+        guard let url = components.url else { return nil }
+
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 12
+        config.timeoutIntervalForResource = 15
+        config.waitsForConnectivity = true
+        let session = URLSession(configuration: config, delegate: SafeRedirectDelegate.shared, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+
+        do {
+            var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  data.count <= 524_288,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  json["version"] as? Int == 1,
+                  let rawDevices = json["devices"] as? [[String: Any]], rawDevices.count <= 256 else { return nil }
+
+            return rawDevices.compactMap { item in
+                guard let rawName = item["name"] as? String,
+                      let host = item["host"] as? String,
+                      rawName.count <= 200, host.count <= 255,
+                      let rawServices = item["services"] as? [[String: Any]], rawServices.count <= 256 else { return nil }
+                let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty, !host.isEmpty else { return nil }
+                let services = rawServices.compactMap { service -> WebService? in
+                    guard let rawTitle = service["name"] as? String,
+                          let port = service["port"] as? Int, (1...65_535).contains(port),
+                          let urlString = service["url"] as? String, urlString.count <= 2_048,
+                          let serviceURL = URL(string: urlString),
+                          let scheme = serviceURL.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return nil }
+                    let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !title.isEmpty, title.count <= 200 else { return nil }
+                    if !showAll && isDirectoryListingTitle(title) { return nil }
+                    return WebService(title: title, port: port, url: serviceURL, isHTTPS: scheme == "https")
+                }
+                return Device(name: name, ip: host, isLocal: false,
+                              os: item["os"] as? String,
+                              online: item["online"] as? Bool ?? true,
+                              services: services)
+            }
+        } catch {
+            dlog("publisher unavailable: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     // MARK: - Tailscale OAuth API
 
+    private actor OAuthTokenCache {
+        private var token: String?
+        private var expiresAt = Date.distantPast
+
+        func validToken() -> String? {
+            Date().addingTimeInterval(60) < expiresAt ? token : nil
+        }
+
+        func store(_ token: String, expiresIn: TimeInterval) {
+            self.token = token
+            expiresAt = Date().addingTimeInterval(max(60, expiresIn))
+        }
+
+        func clear() {
+            token = nil
+            expiresAt = .distantPast
+        }
+    }
+
+    private static let tokenCache = OAuthTokenCache()
+
     static func getAccessToken(clientID: String, clientSecret: String) async -> (token: String?, error: String?) {
+        if let cached = await tokenCache.validToken() { return (cached, nil) }
         guard let url = URL(string: "https://api.tailscale.com/api/v2/oauth/token") else {
             return (nil, "Invalid OAuth URL")
         }
@@ -389,6 +488,8 @@ enum Scanner {
                   let token = json["access_token"] as? String else {
                 return (nil, "Could not decode Tailscale OAuth response")
             }
+            let expiresIn = (json["expires_in"] as? NSNumber)?.doubleValue ?? 3600
+            await tokenCache.store(token, expiresIn: expiresIn)
             return (token, nil)
         } catch {
             return (nil, "Could not reach Tailscale: \(error.localizedDescription)")
@@ -396,8 +497,8 @@ enum Scanner {
     }
 
     static func tailscaleStatus() async -> (String?, String?) {
-        let clientID = UserDefaults.standard.string(forKey: "tsClientID") ?? ""
-        let clientSecret = UserDefaults.standard.string(forKey: "tsClientSecret") ?? ""
+        let clientID = CredentialStore.clientID
+        let clientSecret = CredentialStore.clientSecret
 
         guard !clientID.isEmpty, !clientSecret.isEmpty else {
             return (nil, "NO_CREDENTIALS")
@@ -422,6 +523,7 @@ enum Scanner {
                 return (nil, "No HTTP response from Tailscale API")
             }
             if http.statusCode == 401 || http.statusCode == 403 {
+                await tokenCache.clear()
                 return (nil, "INVALID_CREDENTIALS")
             }
             if http.statusCode != 200 {
@@ -461,12 +563,10 @@ enum Scanner {
         }
         guard !services.isEmpty else { return nil }
 
-        // Detect UniFi hardware model, then ISP, then fall back to Gateway.
-        // ISP comes before page title because our "Admin Page" rename isn't a real name.
+        // Detect UniFi hardware model, then use the page title or a local fallback.
         let model = await detectUnifiModel(host: gatewayIP)
         let name: String
         if let model { name = model }
-        else if let isp = await getISPName() { name = "\(isp) Modem" }
         else {
             let realTitle = services.first(where: { $0.title != "Admin Page" })?.title
             name = realTitle ?? "Gateway"
@@ -498,19 +598,6 @@ enum Scanner {
                   let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                   let modelObj = obj["model"] as? [String: Any] else { return nil }
             return (modelObj["shortName"] as? String) ?? (modelObj["longName"] as? String)
-        } catch {
-            return nil
-        }
-    }
-
-    static func getISPName() async -> String? {
-        guard let url = URL(string: "https://ipinfo.io/json") else { return nil }
-        do {
-            let session = _scanSession ?? makeScanSession()
-            let (data, _) = try await session.data(from: url)
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let org = json["org"] as? String, !org.isEmpty else { return nil }
-            return org.replacingOccurrences(of: #"^AS\d+\s+"#, with: "", options: .regularExpression)
         } catch {
             return nil
         }
@@ -971,5 +1058,21 @@ class InsecureTLSDelegate: NSObject, URLSessionDelegate {
         } else {
             completionHandler(.cancelAuthenticationChallenge, nil)
         }
+    }
+}
+
+// Uses normal platform certificate validation and refuses redirects to another host.
+class SafeRedirectDelegate: NSObject, URLSessionTaskDelegate {
+    static let shared = SafeRedirectDelegate()
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        guard request.url?.host?.lowercased() == task.currentRequest?.url?.host?.lowercased() else {
+            completionHandler(nil)
+            return
+        }
+        completionHandler(request)
     }
 }

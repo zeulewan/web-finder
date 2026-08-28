@@ -3,6 +3,10 @@ name: iOS App Store Submit
 on:
   workflow_dispatch:
 
+concurrency:
+  group: ios-app-store-release
+  cancel-in-progress: false
+
 jobs:
   submit:
     name: Submit Uploaded Build
@@ -11,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Write App Store Connect key
         env:
@@ -38,10 +42,10 @@ jobs:
           source "$RUNNER_TEMP/submit-venv/bin/activate"
           python -m pip install cryptography
           for attempt in 1 2 3 4 5; do
-            if python scripts/submit-ios-appstore.py "$VERSION" --build-number "$BUILD" --whats-new "Improves refresh reliability on slow or newly connected Tailscale paths. Web Finder now waits for connectivity, tries manifest routes concurrently, and automatically retries when reachable devices initially return no services."; then
+            if python scripts/submit-ios-appstore.py "$VERSION" --build-number "$BUILD" --cancel-active-review --whats-new "Refreshes are more reliable on slow tailnet paths, credentials move to Keychain, and publisher URLs now offer discovery without Tailscale API credentials."; then
               exit 0
             fi
             echo "Submit attempt $attempt failed; waiting for App Store Connect build processing..."
             sleep 60
           done
-          python scripts/submit-ios-appstore.py "$VERSION" --build-number "$BUILD" --whats-new "Improves refresh reliability on slow or newly connected Tailscale paths. Web Finder now waits for connectivity, tries manifest routes concurrently, and automatically retries when reachable devices initially return no services."
+          python scripts/submit-ios-appstore.py "$VERSION" --build-number "$BUILD" --cancel-active-review --whats-new "Refreshes are more reliable on slow tailnet paths, credentials move to Keychain, and publisher URLs now offer discovery without Tailscale API credentials."

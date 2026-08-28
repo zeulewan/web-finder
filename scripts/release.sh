@@ -30,20 +30,16 @@ fi
 
 scripts/bump-version.sh "$version" ${ios_build:+"$ios_build"}
 
+npm ci --prefix cli
+npm --prefix cli audit --audit-level=high
+npm --prefix cli run check
+
 (cd macos && bash build.sh)
 rm -f WebFinder.app.zip
-if [ -n "${APP_STORE_CONNECT_KEY_PATH:-}" ] ||
-   [ -n "${APP_STORE_CONNECT_API_KEY_P8:-}" ] ||
-   [ -n "${NOTARYTOOL_PROFILE:-}" ] ||
-   { [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APP_SPECIFIC_PASSWORD:-}" ]; }; then
-  scripts/sign-and-notarize-macos.sh macos/WebFinder.app WebFinder.app.zip
-else
-  echo "Signing/notarization skipped. Set notarization credentials for polished macOS releases." >&2
-  echo "The signing script will auto-detect a Developer ID Application certificate, or use DEVELOPER_ID_APPLICATION." >&2
-  ditto --norsrc -c -k --keepParent macos/WebFinder.app WebFinder.app.zip
-fi
+scripts/doctor-macos-release.sh
+scripts/sign-and-notarize-macos.sh macos/WebFinder.app WebFinder.app.zip
 
-git add AGENTS.md CLAUDE.md PRIVACY.md README.md cli/package.json cli/package-lock.json docs/index.html docs/privacy.html ios/WebFinder.xcodeproj/project.pbxproj ios/WebFinder/Info.plist macos/Info.plist macos/build.sh scripts
+git add -A
 git commit -m "Bump version to $version"
 git tag "$tag"
 git push origin main "$tag"
@@ -51,6 +47,6 @@ git push origin main "$tag"
 gh release create "$tag" WebFinder.app.zip \
   --repo zeulewan/web-finder \
   --title "WebFinder for Tailscale $version" \
-  --notes "WebFinder for Tailscale $version release."
+  --notes-file RELEASE_NOTES.md
 
 echo "Released $tag"

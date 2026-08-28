@@ -20,9 +20,8 @@ from cryptography.hazmat.primitives.asymmetric import ec, utils
 
 BASE_URL = "https://api.appstoreconnect.apple.com"
 DEFAULT_WHATS_NEW = (
-    "Improves refresh reliability on slow or newly connected Tailscale paths. "
-    "Web Finder now waits for connectivity, tries manifest routes concurrently, "
-    "and automatically retries when reachable devices initially return no services."
+    "Refreshes are more reliable on slow tailnet paths, credentials move to Keychain, "
+    "and publisher URLs now offer discovery without Tailscale API credentials."
 )
 
 
@@ -81,6 +80,18 @@ def request(method: str, path: str, data: dict | None = None) -> dict:
         raise
 
 
+def all_data(path: str) -> list[dict]:
+    """Follow App Store Connect pagination links and return one combined data list."""
+    items: list[dict] = []
+    next_path: str | None = path
+    while next_path:
+        response = request("GET", next_path)
+        items.extend(response.get("data", []))
+        next_url = response.get("links", {}).get("next")
+        next_path = next_url.removeprefix(BASE_URL) if next_url else None
+    return items
+
+
 def find_app_id(bundle_id: str) -> str:
     query = urllib.parse.urlencode({"filter[bundleId]": bundle_id})
     apps = request("GET", f"/v1/apps?{query}")["data"]
@@ -90,7 +101,8 @@ def find_app_id(bundle_id: str) -> str:
 
 
 def get_or_create_version(app_id: str, version: str) -> str:
-    versions = request("GET", f"/v1/apps/{app_id}/appStoreVersions")["data"]
+    params = urllib.parse.urlencode({"filter[platform]": "IOS", "limit": "200"})
+    versions = all_data(f"/v1/apps/{app_id}/appStoreVersions?{params}")
     for item in versions:
         attrs = item["attributes"]
         if attrs.get("platform") == "IOS" and attrs.get("versionString") == version:
@@ -130,9 +142,7 @@ def attach_build(version_id: str, build_id: str) -> None:
 
 
 def update_whats_new(version_id: str, whats_new: str) -> None:
-    locs = request("GET", f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations")[
-        "data"
-    ]
+    locs = all_data(f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations?limit=200")
     loc = next((item for item in locs if item["attributes"].get("locale") == "en-US"), None)
     if not loc:
         payload = {
@@ -158,33 +168,99 @@ def update_whats_new(version_id: str, whats_new: str) -> None:
     )
 
 
-def submit(version_id: str, app_id: str) -> str:
-    submission = request(
-        "POST",
-        "/v1/reviewSubmissions",
+def active_review_submissions(app_id: str) -> list[dict]:
+    params = urllib.parse.urlencode(
         {
-            "data": {
-                "type": "reviewSubmissions",
-                "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
-            }
-        },
-    )["data"]
-    submission_id = submission["id"]
-    request(
-        "POST",
-        "/v1/reviewSubmissionItems",
-        {
-            "data": {
-                "type": "reviewSubmissionItems",
-                "relationships": {
-                    "reviewSubmission": {
-                        "data": {"type": "reviewSubmissions", "id": submission_id}
-                    },
-                    "appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}},
-                },
-            }
-        },
+            "filter[platform]": "IOS",
+            "filter[state]": "READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,UNRESOLVED_ISSUES,CANCELING",
+            "include": "appStoreVersionForReview",
+            "limit": "200",
+        }
     )
+    return all_data(f"/v1/apps/{app_id}/reviewSubmissions?{params}")
+
+
+def cancel_other_active_reviews(app_id: str, version_id: str) -> None:
+    for submission in active_review_submissions(app_id):
+        related = submission.get("relationships", {}).get("appStoreVersionForReview", {}).get("data")
+        if related and related.get("id") == version_id:
+            continue
+        state = submission.get("attributes", {}).get("state")
+        if state == "CANCELING":
+            continue
+        request(
+            "PATCH",
+            f"/v1/reviewSubmissions/{submission['id']}",
+            {
+                "data": {
+                    "type": "reviewSubmissions",
+                    "id": submission["id"],
+                    "attributes": {"canceled": True},
+                }
+            },
+        )
+        print(f"Canceled superseded review submission {submission['id']} ({state}).")
+
+
+def submit(version_id: str, app_id: str, cancel_active_review: bool = False) -> str:
+    active = active_review_submissions(app_id)
+    submission = next(
+        (
+            item
+            for item in active
+            if (
+                item.get("relationships", {})
+                .get("appStoreVersionForReview", {})
+                .get("data")
+                or {}
+            ).get("id") == version_id
+        ),
+        None,
+    )
+    if submission and submission["attributes"].get("state") != "READY_FOR_REVIEW":
+        return submission["attributes"].get("state", "UNKNOWN")
+
+    other_active = [item for item in active if item is not submission]
+    if other_active:
+        if not cancel_active_review:
+            states = ", ".join(item["attributes"].get("state", "UNKNOWN") for item in other_active)
+            raise SystemExit(f"Another iOS review submission is active ({states}). Use --cancel-active-review to supersede it.")
+        cancel_other_active_reviews(app_id, version_id)
+        raise SystemExit("Superseded review cancellation requested; retry after App Store Connect finishes canceling it.")
+
+    if not submission:
+        submission = request(
+            "POST",
+            "/v1/reviewSubmissions",
+            {
+                "data": {
+                    "type": "reviewSubmissions",
+                    "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
+                }
+            },
+        )["data"]
+    submission_id = submission["id"]
+    items = all_data(f"/v1/reviewSubmissions/{submission_id}/items?limit=50")
+    item_version_ids = {
+        (item.get("relationships", {}).get("appStoreVersion", {}).get("data") or {}).get("id")
+        for item in items
+    }
+    if version_id not in item_version_ids:
+        request(
+            "POST",
+            "/v1/reviewSubmissionItems",
+            {
+                "data": {
+                    "type": "reviewSubmissionItems",
+                    "relationships": {
+                        "reviewSubmission": {
+                            "data": {"type": "reviewSubmissions", "id": submission_id}
+                        },
+                        "appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}},
+                    },
+                }
+            },
+        )
     response = request(
         "PATCH",
         f"/v1/reviewSubmissions/{submission_id}",
@@ -206,6 +282,11 @@ def main() -> None:
     parser.add_argument("--build-number", help="Specific App Store Connect build number to use")
     parser.add_argument("--whats-new", default=DEFAULT_WHATS_NEW)
     parser.add_argument("--no-submit", action="store_true")
+    parser.add_argument(
+        "--cancel-active-review",
+        action="store_true",
+        help="Cancel a different active iOS review submission before submitting this version",
+    )
     args = parser.parse_args()
 
     app_id = find_app_id(args.bundle_id)
@@ -218,7 +299,7 @@ def main() -> None:
         print(f"Prepared {args.version}: version={version_id} build={build_id}")
         return
 
-    state = submit(version_id, app_id)
+    state = submit(version_id, app_id, cancel_active_review=args.cancel_active_review)
     print(f"Submitted {args.version}: version={version_id} build={build_id} state={state}")
 
 
