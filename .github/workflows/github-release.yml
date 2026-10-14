@@ -49,7 +49,7 @@ jobs:
 
       - name: Import Developer ID certificate
         if: env.HAS_DEVELOPER_ID == 'true'
-        uses: apple-actions/import-codesign-certs@d5eb0a74eba413a19c8ee15d93a538d1657da86d # v5
+        uses: apple-actions/import-codesign-certs@95e84a1a18f2bdbc5c6ab9b7f4429372e4b13a8b # v5
         with:
           p12-file-base64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
           p12-password: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
